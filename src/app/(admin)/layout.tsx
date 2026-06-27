@@ -210,7 +210,7 @@ export default function AdminLayout({
                   const Icon = item.icon;
                   const isActive =
                     pathname === item.href || pathname.startsWith(item.href + "/");
-                  const badgeCount = "badgeKey" in item ? (stats[item.badgeKey] || 0) : 0;
+                  const badgeCount = "badgeKey" in item && item.badgeKey ? (stats[item.badgeKey] || 0) : 0;
 
                   return (
                     <Link

@@ -427,7 +427,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <Star className="h-5 w-5 text-secondary-500" />
               <h2 className="text-xl font-bold text-neutral-900">{t.dashboard.mutualStarMatches}</h2>
-              <Badge variant="secondary" size="sm">{starMatches.length}</Badge>
+              <Badge variant="premium" size="sm">{starMatches.length}</Badge>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
