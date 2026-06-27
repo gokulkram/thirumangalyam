@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { Conversation, Message, Profile } from "@/lib/db/models";
+import { filterMessage, checkMessageRateLimit } from "@/lib/security/content-filter";
+import { notifyNewMessage } from "@/lib/notifications/service";
 
 export async function GET(
   request: NextRequest,
@@ -120,13 +122,35 @@ export async function POST(
       return NextResponse.json({ error: "Content is required" }, { status: 400 });
     }
 
-    // Create the message
+    // Rate limit: max 20 messages per user per minute
+    if (!checkMessageRateLimit(userId)) {
+      return NextResponse.json({ error: "Too many messages. Please slow down." }, { status: 429 });
+    }
+
+    const trimmed = content.trim();
+    const filterResult = filterMessage(trimmed);
+
+    if (filterResult.blocked) {
+      const hints: Record<string, string> = {
+        phone_number: "Sharing phone numbers is not allowed in chat.",
+        contact_exchange: "Exchanging contact details is not permitted here.",
+        explicit_content: "Your message contains inappropriate content.",
+      };
+      return NextResponse.json(
+        { error: hints[filterResult.reason] || "Message not allowed." },
+        { status: 422 }
+      );
+    }
+
+    // Create the message (flagged ones are stored but marked for review)
     const message = await Message.create({
       conversationId: id,
       senderId: userId,
-      content: content.trim(),
+      content: trimmed,
       type: "text",
       status: "sent",
+      isFiltered: filterResult.flagged,
+      filterReason: filterResult.reason,
     });
 
     // Update conversation
@@ -135,10 +159,22 @@ export async function POST(
     );
 
     await Conversation.findByIdAndUpdate(id, {
-      lastMessage: content.trim(),
+      lastMessage: trimmed,
       lastMessageAt: new Date(),
       $inc: { [`unreadCount.${otherParticipantId}`]: 1 },
     });
+
+    // Notify the other participant — throttled, fire-and-forget
+    if (otherParticipantId) {
+      const { Profile: ProfileModel } = await import("@/lib/db/models");
+      const senderProfile = await ProfileModel.findOne({ userId }).select("fullName").lean();
+      notifyNewMessage({
+        toUserId: otherParticipantId.toString(),
+        fromProfileName: (senderProfile as any)?.fullName || "Someone",
+        conversationId: id,
+        messagePreview: trimmed,
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ message }, { status: 201 });
   } catch (error: any) {

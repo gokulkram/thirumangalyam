@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { Shortlist, Profile } from "@/lib/db/models";
+import mongoose from "mongoose";
 
 export async function GET() {
   try {
@@ -15,11 +16,22 @@ export async function GET() {
       .sort({ createdAt: -1 })
       .lean();
 
+    const SELECT = "userId fullName age height city occupation community star photos verificationStatus isOnline lastActive";
+
     const results = await Promise.all(
       shortlists.map(async (s: any) => {
-        const profile = await Profile.findOne({ userId: s.shortlistedUserId })
-          .select("userId fullName age height city occupation community star photos verificationStatus isOnline lastActive")
+        const shortlistedId = s.shortlistedUserId;
+
+        // Primary: look up by User ID (correct path)
+        let profile = await Profile.findOne({ userId: shortlistedId })
+          .select(SELECT)
           .lean();
+
+        // Fallback: shortlistedUserId may have been stored as Profile._id
+        if (!profile && mongoose.Types.ObjectId.isValid(shortlistedId?.toString())) {
+          profile = await Profile.findById(shortlistedId).select(SELECT).lean();
+        }
+
         return { ...s, profile };
       })
     );

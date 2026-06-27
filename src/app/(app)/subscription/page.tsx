@@ -16,7 +16,10 @@ import {
   Landmark,
   Wallet,
   RefreshCw,
+  Download,
+  XCircle,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui";
 
 const PLAN_LABELS: Record<string, string> = {
   free: "Free",
@@ -61,6 +64,33 @@ export default function SubscriptionPage() {
   const [activeSub, setActiveSub] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [cancelDialog, setCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelMsg, setCancelMsg] = useState("");
+
+  async function handleCancel() {
+    if (!activeSub) return;
+    setCancelling(true);
+    try {
+      const res = await fetch("/api/subscription/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscriptionId: activeSub._id, reason: cancelReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cancellation failed");
+      setCancelDialog(false);
+      setCancelMsg("Membership cancelled. Your account has been reverted to the free plan.");
+      setActiveSub(null);
+      const updated = await fetch("/api/subscription/me").then((r) => r.json());
+      setHistory(updated.history || []);
+    } catch (e: any) {
+      setCancelMsg(`Error: ${e.message}`);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -84,6 +114,14 @@ export default function SubscriptionPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Cancel message */}
+      {cancelMsg && (
+        <div className={`rounded-[var(--radius-md)] border px-4 py-3 text-sm flex items-center justify-between ${cancelMsg.startsWith("Error") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+          {cancelMsg}
+          <button onClick={() => setCancelMsg("")} className="ml-4 text-xs opacity-70 hover:opacity-100">×</button>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <Link href="/settings" className="inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-700 mb-3">
@@ -95,6 +133,7 @@ export default function SubscriptionPage() {
 
       {/* ── ACTIVE MEMBERSHIP ── */}
       {activeSub ? (
+        <>
         <Card variant="flat" padding="lg" className="border-primary-200 bg-gradient-to-br from-primary-50 to-white">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
@@ -160,7 +199,62 @@ export default function SubscriptionPage() {
               </Button>
             </div>
           )}
+
+          <div className="mt-4 flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(`/api/invoices/${activeSub._id}`, "_blank")}
+            >
+              <Download className="h-4 w-4" /> Download Receipt
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-error hover:text-error"
+              onClick={() => { setCancelReason(""); setCancelDialog(true); }}
+            >
+              <XCircle className="h-4 w-4" /> Cancel Membership
+            </Button>
+          </div>
         </Card>
+
+        {/* Cancel dialog */}
+        {cancelDialog && (
+          <Dialog open onOpenChange={(o) => { if (!cancelling) setCancelDialog(o); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cancel Membership</DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <p className="text-sm text-neutral-600">
+                  Your Premium membership will be cancelled immediately and your account reverted to the free plan.
+                  This action cannot be undone.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-neutral-700">Reason for cancellation (optional)</label>
+                  <textarea
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Let us know why you're leaving..."
+                    rows={3}
+                    className="w-full rounded-[var(--radius-md)] border border-neutral-300 px-3 py-2 text-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-100 focus:outline-none resize-none"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" disabled={cancelling} onClick={() => setCancelDialog(false)}>
+                  Keep Membership
+                </Button>
+                <Button variant="destructive" size="sm" disabled={cancelling} onClick={handleCancel}>
+                  {cancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                  {cancelling ? "Cancelling..." : "Confirm Cancel"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+        </>
       ) : (
         <Card variant="flat" padding="lg">
           <div className="flex items-center gap-4">
@@ -246,16 +340,25 @@ export default function SubscriptionPage() {
                     </div>
                   </div>
 
-                  {/* Right — Amount */}
-                  <div className="text-right shrink-0">
+                  {/* Right — Amount + Download */}
+                  <div className="text-right shrink-0 space-y-1">
                     <p className="text-lg font-bold text-neutral-900">
                       ₹{sub.amount?.toLocaleString("en-IN")}
                     </p>
-                    <p className="text-xs text-neutral-400 mt-0.5">
+                    {sub.discountAmount > 0 && (
+                      <p className="text-xs text-emerald-600">Saved ₹{sub.discountAmount?.toLocaleString("en-IN")}</p>
+                    )}
+                    <p className="text-xs text-neutral-400">
                       {new Date(sub.createdAt).toLocaleDateString("en-IN", {
                         day: "numeric", month: "short", year: "numeric",
                       })}
                     </p>
+                    <button
+                      onClick={() => window.open(`/api/invoices/${sub._id}`, "_blank")}
+                      className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-700 font-medium ml-auto"
+                    >
+                      <Download className="h-3 w-3" /> Receipt
+                    </button>
                   </div>
                 </div>
               </Card>

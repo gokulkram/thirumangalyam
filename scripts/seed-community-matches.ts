@@ -3,12 +3,12 @@
  * Run with: npx tsx scripts/seed-community-matches.ts
  */
 
+import "./load-env";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://thirumangalyam:QA6FQv80xRG0Zh83@cluster0.t1qnu90.mongodb.net/thirumangalyam?appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) throw new Error("MONGODB_URI environment variable is not set");
 
 const COMMUNITIES = [
   "Brahmin - Iyer",
@@ -80,7 +80,7 @@ function daysAgo(n: number) { return new Date(Date.now() - n * 86400000); }
 
 async function main() {
   console.log("Connecting to MongoDB...");
-  await mongoose.connect(MONGODB_URI);
+  await mongoose.connect(MONGODB_URI!);
   console.log("Connected.\n");
 
   const db = mongoose.connection.db!;

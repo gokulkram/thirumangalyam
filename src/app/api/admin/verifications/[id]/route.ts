@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { VerificationRequest, Profile, ActivityLog } from "@/lib/db/models";
+import {
+  notifyVerificationApproved,
+  notifyVerificationRejected,
+} from "@/lib/notifications/service";
 
 export async function PATCH(
   request: NextRequest,
@@ -33,11 +37,15 @@ export async function PATCH(
       verification.reviewedBy = session.user.id;
       await verification.save();
 
-      // Update profile verification status
       await Profile.findOneAndUpdate(
         { userId: verification.userId },
         { verificationStatus: "verified" }
       );
+
+      // Notify user — fire-and-forget
+      notifyVerificationApproved({
+        userId: verification.userId.toString(),
+      }).catch(() => {});
     } else {
       verification.status = "rejected";
       verification.reviewedAt = new Date();
@@ -49,9 +57,14 @@ export async function PATCH(
         { userId: verification.userId },
         { verificationStatus: "unverified" }
       );
+
+      // Notify user with rejection reason — fire-and-forget
+      notifyVerificationRejected({
+        userId: verification.userId.toString(),
+        reason: rejectionReason || "Document did not meet verification criteria.",
+      }).catch(() => {});
     }
 
-    // Log activity
     await ActivityLog.create({
       action: `verification_${action}`,
       description: `Admin ${action}ed verification for ${verification.userName || verification.userId}`,

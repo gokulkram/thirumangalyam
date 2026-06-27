@@ -64,6 +64,7 @@ function InterestsPageInner() {
   }, [fetchInterests]);
 
   const handleAccept = async (id: string) => {
+    if (actionLoading) return;
     setActionLoading(id);
     try {
       const res = await fetch(`/api/interests/${id}`, {
@@ -89,6 +90,7 @@ function InterestsPageInner() {
   };
 
   const handleDecline = async (id: string) => {
+    if (actionLoading) return;
     setActionLoading(id);
     try {
       const res = await fetch(`/api/interests/${id}`, {
@@ -107,6 +109,7 @@ function InterestsPageInner() {
   };
 
   const handleWithdraw = async (id: string) => {
+    if (actionLoading) return;
     setActionLoading(id);
     try {
       const res = await fetch(`/api/interests/${id}`, {
@@ -164,17 +167,17 @@ function InterestsPageInner() {
           <TabsTrigger value="received">
             <Inbox className="h-4 w-4" />
             {t.nav.received}
-            <Badge variant="primary" size="sm">{received.length}</Badge>
+            {received.length > 0 && <Badge variant="primary" size="sm">{received.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="sent">
             <Send className="h-4 w-4" />
             {t.nav.sent}
-            <Badge variant="default" size="sm">{sent.length}</Badge>
+            {sent.length > 0 && <Badge variant="default" size="sm">{sent.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="accepted">
             <Handshake className="h-4 w-4" />
             {t.nav.accepted}
-            <Badge variant="success" size="sm">{accepted.length}</Badge>
+            {accepted.length > 0 && <Badge variant="success" size="sm">{accepted.length}</Badge>}
           </TabsTrigger>
         </TabsList>
 

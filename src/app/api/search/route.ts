@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { User, Profile } from "@/lib/db/models";
+import { searchResultCache } from "@/lib/cache";
+
+const SEARCH_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +19,18 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "20")));
     const skip = (page - 1) * limit;
 
+    // Cache key includes userId so different users never share cached results
+    const userId = session.user.id;
+    const cacheKey = `search:${userId}:${searchParams.toString()}`;
+    const cached = searchResultCache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: { "X-Cache": "HIT" },
+      });
+    }
+
     // Gather filters
+    const q = searchParams.get("q")?.trim() || "";  // name / city text search
     const gender = searchParams.get("gender");
     const ageMin = searchParams.get("ageMin");
     const ageMax = searchParams.get("ageMax");
@@ -33,10 +47,10 @@ export async function GET(request: NextRequest) {
     const hasDosham = searchParams.get("hasDosham");
 
     // First filter users by gender and status
-    const userQuery: any = { status: "active", _id: { $ne: session.user.id } };
+    const userQuery: any = { status: "active", _id: { $ne: userId } };
     if (gender) userQuery.gender = gender;
 
-    const activeUsers = await User.find(userQuery).select("_id isPremium").lean();
+    const activeUsers = await User.find(userQuery).select("_id isPremium gender").lean();
     const activeUserIds = activeUsers.map((u: any) => u._id);
 
     // Build profile query
@@ -62,6 +76,18 @@ export async function GET(request: NextRequest) {
     if (star) profileQuery.star = star;
     if (hasDosham) profileQuery.hasDosham = hasDosham === "true";
 
+    // Server-side name / city text search
+    if (q) {
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
+      profileQuery.$or = [
+        { fullName: regex },
+        { city: regex },
+        { occupation: regex },
+        { community: regex },
+      ];
+    }
+
     const [total, profiles] = await Promise.all([
       Profile.countDocuments(profileQuery),
       Profile.find(profileQuery)
@@ -85,12 +111,13 @@ export async function GET(request: NextRequest) {
         primaryPhotoUrl: primaryPhoto?.url || "",
         isVerified: p.verificationStatus === "verified",
         isPremium: userMap.get(userId.toString())?.isPremium || false,
+        gender: (userMap.get(userId.toString()) as any)?.gender || "",
         location: [p.city, p.state].filter(Boolean).join(", ") || "",
         isShortlisted: false,
       };
     });
 
-    return NextResponse.json({
+    const payload = {
       profiles: results,
       pagination: {
         page,
@@ -98,6 +125,12 @@ export async function GET(request: NextRequest) {
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+
+    searchResultCache.set(cacheKey, payload, SEARCH_CACHE_TTL);
+
+    return NextResponse.json(payload, {
+      headers: { "X-Cache": "MISS" },
     });
   } catch (error: any) {
     console.error("GET /api/search error:", error);

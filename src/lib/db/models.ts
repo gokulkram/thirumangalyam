@@ -14,6 +14,14 @@ const userSchema = new Schema(
     plan: { type: String, enum: ["free", "premium_3", "premium_6", "premium_12"], default: "free" },
     status: { type: String, enum: ["active", "suspended", "banned", "inactive"], default: "active" },
     profileComplete: { type: Number, default: 0 },
+    sessionVersion: { type: Number, default: 0 },
+    notificationPrefs: {
+      type: Schema.Types.Mixed,
+      default: () => ({
+        email: { newMatches: true, interestsReceived: true, interestAccepted: true, newMessages: true, profileViews: false, weeklyDigest: true },
+        push: { interests: true, messages: true, matchAlerts: true },
+      }),
+    },
   },
   { timestamps: true }
 );
@@ -71,6 +79,12 @@ const profileSchema = new Schema(
     photos: [{ url: String, isPrimary: Boolean, order: Number }],
     horoscopeUrl: String,
     verificationStatus: { type: String, enum: ["unverified", "pending", "verified"], default: "unverified" },
+    // Privacy settings
+    profileVisibility: { type: String, enum: ["all", "premium", "hidden"], default: "all" },
+    photoPrivacy: { type: String, enum: ["all", "accepted", "protected"], default: "all" },
+    showContact: { type: Boolean, default: true },
+    showHoroscope: { type: Boolean, default: true },
+    showOnline: { type: Boolean, default: true },
     // Meta
     isOnline: { type: Boolean, default: false },
     lastActive: Date,
@@ -151,6 +165,8 @@ const messageSchema = new Schema(
     type: { type: String, enum: ["text", "system", "photo"], default: "text" },
     isRead: { type: Boolean, default: false },
     status: { type: String, enum: ["sending", "sent", "delivered", "read", "failed"], default: "sent" },
+    isFiltered: { type: Boolean, default: false },
+    filterReason: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -209,6 +225,10 @@ const reportSchema = new Schema(
     status: { type: String, enum: ["open", "resolved", "dismissed"], default: "open" },
     resolvedAt: Date,
     resolution: String,
+    severity: { type: String, enum: ["low", "medium", "high", "critical"], default: "low" },
+    escalatedAt: Date,
+    escalatedBy: String,
+    autoEscalated: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
@@ -229,6 +249,9 @@ const subscriptionSchema = new Schema(
     razorpayOrderId: String,
     razorpayPaymentId: String,
     razorpaySubscriptionId: String,
+    couponCode: { type: String, default: null },
+    discountAmount: { type: Number, default: 0 },
+    originalAmount: { type: Number, default: null },
   },
   { timestamps: true }
 );
@@ -328,6 +351,123 @@ const otpRecordSchema = new Schema(
 otpRecordSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 /* ============================================================
+   Support Ticket
+   ============================================================ */
+const supportTicketSchema = new Schema(
+  {
+    ticketNumber: { type: String, required: true, unique: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userName: String,
+    userEmail: String,
+    userPhone: String,
+    isPremium: { type: Boolean, default: false },
+    subject: { type: String, required: true },
+    category: {
+      type: String,
+      enum: ["account", "payment", "technical", "profile", "match", "other"],
+      default: "other",
+    },
+    priority: {
+      type: String,
+      enum: ["low", "normal", "high", "urgent"],
+      default: "normal",
+    },
+    status: {
+      type: String,
+      enum: ["open", "in_progress", "resolved", "closed"],
+      default: "open",
+    },
+    messages: [
+      {
+        senderRole: { type: String, enum: ["user", "admin"], required: true },
+        senderName: { type: String, default: "" },
+        content: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    assignedTo: { type: String, default: "" },
+    resolvedAt: Date,
+  },
+  { timestamps: true }
+);
+
+/* ============================================================
+   Promo Code
+   ============================================================ */
+const promoCodeSchema = new Schema(
+  {
+    code: { type: String, required: true, unique: true, uppercase: true },
+    discountType: { type: String, enum: ["percent", "fixed"], required: true },
+    discountValue: { type: Number, required: true },
+    maxUses: { type: Number, default: null },
+    usedCount: { type: Number, default: 0 },
+    expiresAt: { type: Date, default: null },
+    isActive: { type: Boolean, default: true },
+    applicablePlans: { type: [String], default: [] },
+    description: String,
+  },
+  { timestamps: true }
+);
+
+/* ============================================================
+   Saved Search
+   ============================================================ */
+const savedSearchSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    name: { type: String, required: true },
+    filters: { type: Schema.Types.Mixed, required: true },
+  },
+  { timestamps: true }
+);
+
+/* ============================================================
+   Profile Boost
+   ============================================================ */
+const profileBoostSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    boostedAt: { type: Date, required: true },
+    expiresAt: { type: Date, required: true },
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+/* ============================================================
+   Login Event — tracks each successful login for security alerts
+   ============================================================ */
+const loginEventSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    ip: { type: String, default: "unknown" },
+    userAgent: { type: String, default: "" },
+    loginMethod: { type: String, enum: ["password", "otp", "admin"], default: "password" },
+    isNewDevice: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+// Auto-delete login events older than 90 days
+loginEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
+
+// Compound indexes for the hot query paths ─────────────────
+// User: gender + status (match algorithm fetches opposite-gender active users)
+userSchema.index({ gender: 1, status: 1 });
+
+// Profile: age + community (most common search/match filters)
+profileSchema.index({ age: 1, community: 1 });
+// Profile: verificationStatus + lastActive (search sort order)
+profileSchema.index({ verificationStatus: -1, lastActive: -1 });
+// Profile: userId (unique-like lookups)
+profileSchema.index({ userId: 1 });
+
+// Interest: fromUserId + status (exclude already-sent interests from match pool)
+interestSchema.index({ fromUserId: 1, status: 1 });
+
+// LoginEvent: userId + createdAt (for security session listing)
+loginEventSchema.index({ userId: 1, createdAt: -1 });
+
+/* ============================================================
    Exports — use existing model if already compiled (HMR safe)
    ============================================================ */
 export const User = mongoose.models.User || mongoose.model("User", userSchema);
@@ -348,3 +488,8 @@ export const BlockedUser = mongoose.models.BlockedUser || mongoose.model("Blocke
 export const Community = mongoose.models.Community || mongoose.model("Community", communitySchema);
 export const OtpRecord = mongoose.models.OtpRecord || mongoose.model("OtpRecord", otpRecordSchema);
 export const EmailOtpRecord = mongoose.models.EmailOtpRecord || mongoose.model("EmailOtpRecord", emailOtpRecordSchema);
+export const SupportTicket = mongoose.models.SupportTicket || mongoose.model("SupportTicket", supportTicketSchema);
+export const PromoCode = mongoose.models.PromoCode || mongoose.model("PromoCode", promoCodeSchema);
+export const SavedSearch = mongoose.models.SavedSearch || mongoose.model("SavedSearch", savedSearchSchema);
+export const ProfileBoost = mongoose.models.ProfileBoost || mongoose.model("ProfileBoost", profileBoostSchema);
+export const LoginEvent = mongoose.models.LoginEvent || mongoose.model("LoginEvent", loginEventSchema);

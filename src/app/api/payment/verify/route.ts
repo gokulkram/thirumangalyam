@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
-import { User, Subscription, Profile, ActivityLog } from "@/lib/db/models";
+import { User, Subscription, Profile, ActivityLog, PromoCode } from "@/lib/db/models";
+import { notifyPremiumActivated } from "@/lib/notifications/service";
 
 const PLAN_MONTHS: Record<string, number> = {
   premium_3: 3,
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
       razorpay_signature,
       planId,
       paymentMethod,
+      couponCode,
+      finalAmount,
     } = await req.json();
     const userId = session.user.id;
 
@@ -59,11 +62,36 @@ export async function POST(req: NextRequest) {
 
     const profile = await Profile.findOne({ userId });
 
+    // Resolve coupon discount server-side if code provided
+    let discountAmount = 0;
+    let validCouponCode: string | null = null;
+    const originalAmount = PLAN_AMOUNTS[planId];
+
+    if (couponCode?.trim()) {
+      const coupon = await PromoCode.findOne({
+        code: couponCode.trim().toUpperCase(),
+        isActive: true,
+      }) as any;
+      if (coupon) {
+        discountAmount = coupon.discountType === "percent"
+          ? Math.floor((originalAmount * coupon.discountValue) / 100)
+          : Math.min(coupon.discountValue, originalAmount);
+        validCouponCode = coupon.code;
+        coupon.usedCount = (coupon.usedCount || 0) + 1;
+        await coupon.save();
+      }
+    }
+
+    const paidAmount = Math.max(0, originalAmount - discountAmount);
+
     await Subscription.create({
       userId,
       userName: profile?.fullName || "",
       plan: planId,
-      amount: PLAN_AMOUNTS[planId],
+      amount: paidAmount,
+      originalAmount: discountAmount > 0 ? originalAmount : undefined,
+      discountAmount: discountAmount > 0 ? discountAmount : 0,
+      couponCode: validCouponCode,
       startDate,
       endDate,
       status: "active",
@@ -83,6 +111,14 @@ export async function POST(req: NextRequest) {
       userId,
       userName: profile?.fullName || "",
     });
+
+    // Send confirmation email + SMS — fire-and-forget
+    notifyPremiumActivated({
+      userId,
+      plan: planId,
+      endDate,
+      amount: paidAmount,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

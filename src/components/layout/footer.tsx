@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./logo";
-import { Shield, CheckCircle, Users } from "lucide-react";
+import { Shield, CheckCircle, Users, Mail, Phone } from "lucide-react";
 
 export function PublicFooter() {
   return (
@@ -29,8 +29,8 @@ export function PublicFooter() {
 
       {/* Main footer */}
       <div className="mx-auto max-w-[1280px] px-4 py-12 md:px-8 lg:px-20">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div className="col-span-2 md:col-span-1">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
+          <div className="col-span-2 md:col-span-1" >
             <Logo />
             <p className="mt-3 text-sm text-neutral-500 max-w-xs">
               Trusted South Indian matrimonial service connecting families with tradition and technology.
@@ -74,6 +74,39 @@ export function PublicFooter() {
           </div>
 
           <div>
+            <h4 className="text-sm font-semibold text-neutral-800 mb-3">Contact Us</h4>
+            <ul className="space-y-2.5">
+              <li>
+                <a
+                  href="mailto:anandakumararasukkutty@gmail.com"
+                  className="flex items-start gap-2 text-sm text-neutral-500 hover:text-primary-600 transition-colors"
+                >
+                  <Mail className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span className="break-all">anandakumararasukkutty@gmail.com</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href="tel:+919566577300"
+                  className="flex items-center gap-2 text-sm text-neutral-500 hover:text-primary-600 transition-colors"
+                >
+                  <Phone className="h-4 w-4 shrink-0" />
+                  +91 95665 77300
+                </a>
+              </li>
+              <li>
+                <a
+                  href="tel:+919566877300"
+                  className="flex items-center gap-2 text-sm text-neutral-500 hover:text-primary-600 transition-colors"
+                >
+                  <Phone className="h-4 w-4 shrink-0" />
+                  +91 95668 77300
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div>
             <h4 className="text-sm font-semibold text-neutral-800 mb-3">Legal</h4>
             <ul className="space-y-2">
               {[
@@ -100,18 +133,12 @@ export function PublicFooter() {
   );
 }
 
-export function MinimalFooter() {
+export function MinimalFooter({ className }: { className?: string }) {
   return (
-    <footer className="border-t border-neutral-200 bg-white py-4">
-      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-center gap-4 px-4 text-xs text-neutral-400">
-        <Link href="/help" className="hover:text-neutral-600 transition-colors">Help</Link>
-        <span>&middot;</span>
-        <Link href="/privacy" className="hover:text-neutral-600 transition-colors">Privacy</Link>
-        <span>&middot;</span>
-        <Link href="/terms" className="hover:text-neutral-600 transition-colors">Terms</Link>
-        <span>&middot;</span>
-        <span>&copy; {new Date().getFullYear()} Thirumangalyam</span>
-      </div>
+    <footer className={`border-t border-neutral-200 bg-white py-3 shrink-0 ${className ?? ""}`}>
+      <p className="text-center text-xs text-neutral-400">
+        &copy; {new Date().getFullYear()} Thirumangalyam. All rights reserved.
+      </p>
     </footer>
   );
 }

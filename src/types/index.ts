@@ -131,6 +131,8 @@ export interface PartnerPreferences {
 export interface MatchCard {
   id: string;
   profileId: string;
+  userId: string;
+  gender?: "male" | "female";
   fullName: string;
   age: number;
   height: string;
@@ -142,6 +144,8 @@ export interface MatchCard {
   isPremium: boolean;
   isOnline: boolean;
   compatibilityScore?: number;
+  isCommunityMatch?: boolean;
+  joinedAt?: string | null;
   isShortlisted: boolean;
 }
 
@@ -153,7 +157,7 @@ export interface Interest {
   note?: string;
   sentAt: string;
   respondedAt?: string;
-  profile: MatchCard; // the other person's card
+  profile: MatchCard | null; // null when the other user's profile is not found
 }
 
 export interface ChatConversation {

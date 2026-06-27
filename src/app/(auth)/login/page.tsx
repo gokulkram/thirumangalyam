@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [forgotStep, setForgotStep] = useState<"idle" | "phone" | "otp" | "newpass" | "done">("idle");
   const [forgotPhone, setForgotPhone] = useState("");
   const [forgotOtp, setForgotOtp] = useState(["", "", "", "", "", ""]);
+  const [forgotDemoOtp, setForgotDemoOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [forgotCountdown, setForgotCountdown] = useState(0);
@@ -157,6 +158,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      setForgotDemoOtp(data.demoOtp || "");
       setForgotStep("otp");
       setForgotCountdown(30);
       setForgotOtp(["", "", "", "", "", ""]);
@@ -256,8 +258,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="w-full max-w-[520px]">
-      <div className="rounded-[var(--radius-xl)] border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="w-full sm:max-w-[520px]">
+      {/* Mobile: edge-to-edge, no border/shadow. Desktop: card with border */}
+      <div className="bg-white px-5 py-7 sm:rounded-[var(--radius-xl)] sm:border sm:border-neutral-200 sm:p-8 sm:shadow-sm">
         <h1 className="text-2xl font-bold text-neutral-900">{t.auth.loginTitle}</h1>
         <p className="mt-1 text-sm text-neutral-500">{t.auth.loginSubtitle}</p>
 
@@ -342,9 +345,11 @@ export default function LoginPage() {
             <Input
               label="Phone number"
               type="tel"
+              inputMode="numeric"
               placeholder="98765 43210"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              autoComplete="tel"
             />
 
             {error && <p className="text-sm text-red-600 font-medium">{error}</p>}
@@ -375,11 +380,11 @@ export default function LoginPage() {
             </p>
 
             {demoOtp && (
-              <div className="mb-4 flex items-center justify-between rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3">
                 <div>
                   <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Demo Mode — No SMS sent</p>
                   <p className="text-sm text-amber-800 mt-0.5">
-                    Your OTP is: <span className="font-mono font-bold text-lg tracking-widest">{demoOtp}</span>
+                    OTP: <span className="font-mono font-bold text-xl tracking-[0.3em]">{demoOtp}</span>
                   </p>
                 </div>
                 <button
@@ -389,14 +394,14 @@ export default function LoginPage() {
                     setOtp(digits);
                     inputRefs.current[5]?.focus();
                   }}
-                  className="ml-3 rounded-[var(--radius-md)] bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                  className="self-start sm:self-center rounded-[var(--radius-md)] bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
                 >
                   Auto-fill
                 </button>
               </div>
             )}
 
-            <div className="flex justify-center gap-3" onPaste={handleOtpPaste}>
+            <div className="flex justify-center gap-2 sm:gap-3" onPaste={handleOtpPaste}>
               {otp.map((digit, i) => (
                 <input
                   key={i}
@@ -407,7 +412,7 @@ export default function LoginPage() {
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  className="h-12 w-12 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-xl font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
+                  className="h-11 w-11 sm:h-12 sm:w-12 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-lg sm:text-xl font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
                   aria-label={`Digit ${i + 1}`}
                 />
               ))}
@@ -461,7 +466,7 @@ export default function LoginPage() {
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-neutral-800">Reset Password</h3>
               <button
-                onClick={() => { setForgotStep("idle"); setError(""); }}
+                onClick={() => { setForgotStep("idle"); setError(""); setForgotDemoOtp(""); }}
                 className="text-xs text-neutral-400 hover:text-neutral-600"
               >
                 Cancel
@@ -497,6 +502,29 @@ export default function LoginPage() {
                 <p className="text-xs text-neutral-500">
                   Enter the 6-digit code sent to +91 XXXXX{forgotPhone.replace(/\D/g, "").slice(-2)}
                 </p>
+
+                {forgotDemoOtp && (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Demo Mode — No SMS sent</p>
+                      <p className="text-sm text-amber-800 mt-0.5">
+                        OTP: <span className="font-mono font-bold text-lg tracking-[0.3em]">{forgotDemoOtp}</span>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const digits = forgotDemoOtp.split("");
+                        setForgotOtp(digits);
+                        forgotInputRefs.current[5]?.focus();
+                      }}
+                      className="self-start sm:self-center rounded-[var(--radius-md)] bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                    >
+                      Auto-fill
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex justify-center gap-2" onPaste={handleForgotOtpPaste}>
                   {forgotOtp.map((digit, i) => (
                     <input
@@ -508,7 +536,7 @@ export default function LoginPage() {
                       value={digit}
                       onChange={(e) => handleForgotOtpChange(i, e.target.value)}
                       onKeyDown={(e) => handleForgotOtpKeyDown(i, e)}
-                      className="h-10 w-10 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-lg font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
+                      className="h-11 w-11 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-base font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
                       aria-label={`Reset digit ${i + 1}`}
                     />
                   ))}
@@ -563,7 +591,7 @@ export default function LoginPage() {
             <p className="text-sm font-semibold text-green-700">Password reset successfully!</p>
             <p className="text-xs text-green-600 mt-1">You can now login with your new password.</p>
             <button
-              onClick={() => { setForgotStep("idle"); setNewPassword(""); setConfirmPassword(""); }}
+              onClick={() => { setForgotStep("idle"); setNewPassword(""); setConfirmPassword(""); setForgotDemoOtp(""); }}
               className="mt-2 text-sm font-medium text-primary-600 hover:underline"
             >
               Back to Login

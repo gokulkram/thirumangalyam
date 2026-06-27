@@ -96,6 +96,12 @@ export interface AdminStats {
   activeToday: number;
   pendingVerifications: number;
   openReports: number;
+  openTickets: number;
+  totalInterests: number;
+  acceptedInterests: number;
+  interestAcceptRate: number;
+  totalProfileViews: number;
+  avgProfileViews: number;
   monthlyRevenue: number;
   newUsersThisWeek: number;
   totalPremiumUsers: number;

@@ -18,6 +18,7 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  BarChart3,
 } from "lucide-react";
 import { StatCard } from "@/components/domain/stat-card";
 import {
@@ -577,6 +578,58 @@ export default function AdminDashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Engagement Metrics */}
+      <div>
+        <h2 className="text-base font-semibold text-neutral-700 mb-3 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-emerald-500" />
+          Platform Engagement
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Total Interests",   value: stats.totalInterests.toLocaleString("en-IN"),  desc: "All time", color: "text-violet-600", bg: "bg-violet-50" },
+            { label: "Acceptance Rate",   value: `${stats.interestAcceptRate}%`,                 desc: "Interests accepted", color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Total Profile Views", value: stats.totalProfileViews.toLocaleString("en-IN"), desc: "Across all profiles", color: "text-blue-600", bg: "bg-blue-50" },
+            { label: "Avg Views / User",  value: stats.avgProfileViews.toLocaleString("en-IN"), desc: "Per active user",  color: "text-amber-600", bg: "bg-amber-50" },
+          ].map(({ label, value, desc, color, bg }) => (
+            <div key={label} className="rounded-[var(--radius-lg)] border border-neutral-200 bg-white p-4">
+              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center mb-2", bg)}>
+                <Heart className={cn("h-4 w-4", color)} />
+              </div>
+              <p className="text-xl font-bold text-neutral-900">{value}</p>
+              <p className="text-xs text-neutral-500 mt-0.5">{label}</p>
+              <p className="text-[10px] text-neutral-400 mt-0.5">{desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Profile completion distribution */}
+        <div className="mt-3 rounded-[var(--radius-lg)] border border-neutral-200 bg-white p-4">
+          <p className="text-sm font-semibold text-neutral-700 mb-3">Profile Completion Distribution</p>
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { range: "0–20%",  filter: (u: any) => u.profileComplete <= 20,  color: "bg-red-400" },
+              { range: "21–40%", filter: (u: any) => u.profileComplete > 20 && u.profileComplete <= 40, color: "bg-orange-400" },
+              { range: "41–60%", filter: (u: any) => u.profileComplete > 40 && u.profileComplete <= 60, color: "bg-amber-400" },
+              { range: "61–80%", filter: (u: any) => u.profileComplete > 60 && u.profileComplete <= 80, color: "bg-yellow-400" },
+              { range: "81–100%",filter: (u: any) => u.profileComplete > 80,  color: "bg-emerald-400" },
+            ].map(({ range, filter, color }) => {
+              const count = users.filter(filter).length;
+              const pct = users.length > 0 ? (count / users.length) * 100 : 0;
+              return (
+                <div key={range} className="text-center space-y-1">
+                  <div className="flex items-end justify-center h-16">
+                    <div className={cn("w-full rounded-t-sm transition-all", color)} style={{ height: `${Math.max(4, pct)}%` }} />
+                  </div>
+                  <p className="text-[10px] text-neutral-500 font-medium">{range}</p>
+                  <p className="text-xs font-bold text-neutral-700">{count}</p>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-neutral-400 mt-1 text-center">Users by profile completion range</p>
+        </div>
       </div>
 
       {/* Recent Activity */}

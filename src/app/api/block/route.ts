@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { BlockedUser, Profile } from "@/lib/db/models";
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest) {
       blockedUserId,
     });
 
+    revalidateTag(`matches-${session.user.id}`, "default");
+
     return NextResponse.json({
       success: true,
       message: "User blocked. They can no longer see your profile.",
@@ -115,6 +118,8 @@ export async function DELETE(request: NextRequest) {
       userId: session.user.id,
       blockedUserId,
     });
+
+    revalidateTag(`matches-${session.user.id}`, "default");
 
     return NextResponse.json({
       success: true,

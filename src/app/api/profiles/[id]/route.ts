@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
 import { User, Profile, ProfileView, PartnerPreferences, Interest, Shortlist } from "@/lib/db/models";
 import mongoose from "mongoose";
+import { notifyProfileViewed } from "@/lib/notifications/service";
 
 function isValidObjectId(id: string): boolean {
   return mongoose.Types.ObjectId.isValid(id) && new mongoose.Types.ObjectId(id).toString() === id;
@@ -42,13 +43,22 @@ export async function GET(
     }
 
     const userId = user._id.toString();
-    const partnerPreferences = await PartnerPreferences.findOne({ userId }).lean();
+    const isOwnProfile = session.user.id === userId;
+
+    const [partnerPreferences, viewerUser] = await Promise.all([
+      PartnerPreferences.findOne({ userId }).lean(),
+      isOwnProfile
+        ? Promise.resolve(null)
+        : User.findById(session.user.id).select("isPremium").lean(),
+    ]);
+
+    const viewerIsPremium = isOwnProfile || !!(viewerUser as any)?.isPremium;
 
     // Check interest and shortlist status for the viewing user
     let interestSent = false;
     let isShortlisted = false;
 
-    if (session.user.id !== userId) {
+    if (!isOwnProfile) {
       const [interest, shortlist] = await Promise.all([
         Interest.findOne({
           fromUserId: session.user.id,
@@ -64,17 +74,38 @@ export async function GET(
       interestSent = !!interest;
       isShortlisted = !!shortlist;
 
-      // Record profile view (don't block response on this)
+      // Record profile view (non-blocking)
       ProfileView.create({ viewerId: session.user.id, viewedUserId: userId }).catch(() => {});
       Profile.findOneAndUpdate({ userId }, { $inc: { profileViews: 1 } }).catch(() => {});
+
+      // Notify viewed user if they opted in (throttled per viewer)
+      notifyProfileViewed({
+        viewedUserId: userId,
+        viewerUserId: session.user.id,
+        viewerProfileName: (profile as any)?.fullName || null,
+        viewerIsPremium: viewerIsPremium,
+      }).catch(() => {});
     }
 
+    // Strip contact details from non-premium viewers
+    const { phone, email, ...userWithoutContacts } = user as any;
+    const { whatsappNumber, ...profileWithoutContacts } = profile as any;
+
+    const safeUser = viewerIsPremium
+      ? user
+      : { ...userWithoutContacts, phone: undefined, email: undefined };
+
+    const safeProfile = viewerIsPremium
+      ? profile
+      : { ...profileWithoutContacts, whatsappNumber: undefined };
+
     return NextResponse.json({
-      user,
-      profile,
+      user: safeUser,
+      profile: safeProfile,
       partnerPreferences,
       interestSent,
       isShortlisted,
+      canViewContacts: viewerIsPremium,
     });
   } catch (error: any) {
     console.error("GET /api/profiles/[id] error:", error);

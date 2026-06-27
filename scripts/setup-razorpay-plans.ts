@@ -8,6 +8,7 @@
  *   RAZORPAY_PLAN_ID_12M=plan_zzz
  */
 
+import "./load-env";
 import Razorpay from "razorpay";
 
 const razorpay = new Razorpay({

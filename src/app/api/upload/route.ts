@@ -5,6 +5,7 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { connectDB } from "@/lib/db/connection";
 import { Profile } from "@/lib/db/models";
+import { moderatePhoto } from "@/lib/security/photo-moderation";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_PHOTOS_PER_USER = 10;
@@ -105,6 +106,17 @@ export async function POST(request: NextRequest) {
       if (!validateMagicBytes(buffer)) {
         skipped.push(`${file.name}: file content does not match an image format`);
         continue;
+      }
+
+      // NSFW / photo moderation check
+      const modResult = await moderatePhoto({ fileName: file.name, fileSize: file.size, buffer });
+      if (!modResult.approved) {
+        skipped.push(`${file.name}: photo rejected by content policy`);
+        console.warn(`[PhotoMod] Rejected upload from ${session.user.id}: ${file.name} — ${modResult.reason}`);
+        continue;
+      }
+      if (modResult.requiresReview) {
+        console.info(`[PhotoMod] Photo queued for review: user=${session.user.id} file=${file.name}`);
       }
 
       // Generate safe filename (no user-supplied characters)

@@ -2,11 +2,12 @@
  * Sets demo passwords for test users
  * Run: npx tsx scripts/set-demo-passwords.ts
  */
+import "./load-env";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
-const MONGODB_URI =
-  "mongodb+srv://thirumangalyam:QA6FQv80xRG0Zh83@cluster0.t1qnu90.mongodb.net/thirumangalyam?appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) throw new Error("MONGODB_URI environment variable is not set");
 
 const userSchema = new mongoose.Schema({
   phone: String,
@@ -32,7 +33,7 @@ const Admin = mongoose.models.Admin || mongoose.model("Admin", adminSchema);
 
 async function main() {
   console.log("Connecting...");
-  await mongoose.connect(MONGODB_URI);
+  await mongoose.connect(MONGODB_URI!);
   console.log("Connected!\n");
 
   const demoPassword = await bcrypt.hash("demo123", 10);

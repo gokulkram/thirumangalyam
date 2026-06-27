@@ -53,14 +53,14 @@ export const useMatchStore = create<MatchState>((set, get) => ({
     }
   },
 
-  toggleShortlist: async (profileId) => {
-    const wasShortlisted = get().shortlist.has(profileId);
+  toggleShortlist: async (userId) => {
+    const wasShortlisted = get().shortlist.has(userId);
 
-    // Optimistic update
+    // Optimistic update keyed by userId
     set((state) => {
       const next = new Set(state.shortlist);
-      if (wasShortlisted) next.delete(profileId);
-      else next.add(profileId);
+      if (wasShortlisted) next.delete(userId);
+      else next.add(userId);
       return { shortlist: next };
     });
 
@@ -68,7 +68,7 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       const res = await fetch("/api/shortlist", {
         method: wasShortlisted ? "DELETE" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shortlistedUserId: profileId }),
+        body: JSON.stringify({ shortlistedUserId: userId }),
       });
       if (!res.ok) throw new Error("Failed to update shortlist");
     } catch (err) {
@@ -76,12 +76,12 @@ export const useMatchStore = create<MatchState>((set, get) => ({
       // Revert on failure
       set((state) => {
         const next = new Set(state.shortlist);
-        if (wasShortlisted) next.add(profileId);
-        else next.delete(profileId);
+        if (wasShortlisted) next.add(userId);
+        else next.delete(userId);
         return { shortlist: next };
       });
     }
   },
 
-  isShortlisted: (profileId) => get().shortlist.has(profileId),
+  isShortlisted: (userId) => get().shortlist.has(userId),
 }));

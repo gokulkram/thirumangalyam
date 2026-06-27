@@ -33,9 +33,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# database exports (contains personal data — never commit)
+/db-export
+
+# local tooling / agent state
+.claude/
+.playwright-mcp/
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
-import { User } from "@/lib/db/models";
+import { User, PromoCode } from "@/lib/db/models";
 
 function getRazorpay() {
   return new Razorpay({
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { planId } = await req.json();
+    const { planId, couponCode } = await req.json();
     const userId = session.user.id;
 
     if (!planId || !PLAN_AMOUNTS[planId]) {
@@ -38,7 +38,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const amount = PLAN_AMOUNTS[planId] * 100; // Razorpay uses paise
+    let originalAmount = PLAN_AMOUNTS[planId];
+    let discountAmount = 0;
+    let appliedCoupon: string | null = null;
+
+    if (couponCode?.trim()) {
+      const coupon = await PromoCode.findOne({
+        code: couponCode.trim().toUpperCase(),
+        isActive: true,
+      }).lean() as any;
+
+      if (coupon && !(coupon.expiresAt && new Date(coupon.expiresAt) < new Date())
+        && !(coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses)
+        && !(coupon.applicablePlans?.length > 0 && !coupon.applicablePlans.includes(planId))) {
+        discountAmount = coupon.discountType === "percent"
+          ? Math.floor((originalAmount * coupon.discountValue) / 100)
+          : Math.min(coupon.discountValue, originalAmount);
+        appliedCoupon = coupon.code;
+      }
+    }
+
+    const finalAmount = originalAmount - discountAmount;
+    const amount = Math.max(100, finalAmount) * 100; // Razorpay uses paise, minimum ₹1
 
     const order = await getRazorpay().orders.create({
       amount,
@@ -48,6 +69,7 @@ export async function POST(req: NextRequest) {
         userId,
         planId,
         userName: user.phone || user.email || "",
+        couponCode: appliedCoupon || "",
       },
     });
 
@@ -56,6 +78,10 @@ export async function POST(req: NextRequest) {
       amount: order.amount,
       currency: order.currency,
       planId,
+      originalAmount,
+      discountAmount,
+      finalAmount,
+      couponApplied: appliedCoupon,
     });
   } catch (error: any) {
     console.error("Create order error:", error);

@@ -181,7 +181,16 @@ export default function OnboardingStepPage({
       // Separate partner preferences from profile data
       const { pp_ageMin, pp_ageMax, pp_heightMin, pp_heightMax, pp_education, pp_occupation, pp_community, pp_location, pp_starCompatibility, pp_dosham, pp_diet, ...profileOnly } = profile;
 
-      const payload: any = { ...profileOnly };
+      // Strip fields managed by Step5Fields or MongoDB internals — never let handleSave
+      // overwrite photos/horoscope that Step5Fields saves independently.
+      const {
+        photos, horoscopeUrl, verificationStatus,
+        _id, userId: _userId, createdAt, updatedAt, __v,
+        profileViews, isOnline, lastActive,
+        ...safeProfile
+      } = profileOnly as any;
+
+      const payload: any = { ...safeProfile };
 
       // Include partner preferences if on step 6
       if (step === 6) {
@@ -591,17 +600,29 @@ function Step4Fields({ profile, updateField }: StepFieldsProps) {
   );
 }
 
+const DOC_TYPES = [
+  { value: "aadhaar",         label: "Aadhaar Card" },
+  { value: "passport",        label: "Passport" },
+  { value: "voter_id",        label: "Voter ID" },
+  { value: "driving_license", label: "Driving License" },
+];
+
 function Step5Fields() {
   const [photos, setPhotos] = useState<{ id: string; file?: File; preview: string; isPrimary: boolean }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [horoscopeFile, setHoroscopeFile] = useState<File | null>(null);
   const [horoscopeUploaded, setHoroscopeUploaded] = useState(false);
   const [verificationFile, setVerificationFile] = useState<File | null>(null);
-  const [verificationSubmitted, setVerificationSubmitted] = useState(false);
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [docType, setDocType] = useState("aadhaar");
+  const [verificationStatus, setVerificationStatus] = useState<"unverified" | "pending" | "verified" | "rejected">("unverified");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [verificationUploading, setVerificationUploading] = useState(false);
   const horoscopeInputRef = useRef<HTMLInputElement>(null);
   const verificationInputRef = useRef<HTMLInputElement>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
 
-  // Load existing photos from profile
+  // Load existing photos and verification status from profile
   useEffect(() => {
     fetch("/api/profiles/me")
       .then((res) => res.json())
@@ -613,9 +634,16 @@ function Step5Fields() {
         }));
         if (existing.length > 0) setPhotos(existing);
         if (data.profile?.horoscopeUrl) setHoroscopeUploaded(true);
-        if (data.profile?.verificationStatus === "pending" || data.profile?.verificationStatus === "verified") {
-          setVerificationSubmitted(true);
-        }
+        const vs = data.profile?.verificationStatus || "unverified";
+        setVerificationStatus(vs);
+      })
+      .catch(() => {});
+    // Load rejection reason if any
+    fetch("/api/admin/verifications?myStatus=true")
+      .then(r => r.json())
+      .then(d => {
+        const myReq = (d.verifications || []).find((v: any) => v.status === "rejected");
+        if (myReq?.rejectionReason) setRejectionReason(myReq.rejectionReason);
       })
       .catch(() => {});
   }, []);
@@ -717,28 +745,42 @@ function Step5Fields() {
     }
   };
 
-  const handleVerificationUpload = async (file: File) => {
-    setVerificationFile(file);
-    const formData = new FormData();
-    formData.append("files", file);
+  const handleVerificationUpload = async () => {
+    if (!verificationFile) return;
+    setVerificationUploading(true);
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      const url = data.files?.[0]?.url;
-      if (url) {
-        await fetch("/api/admin/verifications", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            documentType: "aadhaar",
-            documentUrl: url,
-          }),
-        });
-        setVerificationSubmitted(true);
+      // Upload document
+      const docForm = new FormData();
+      docForm.append("files", verificationFile);
+      const docRes = await fetch("/api/upload", { method: "POST", body: docForm });
+      if (!docRes.ok) throw new Error("Document upload failed");
+      const docData = await docRes.json();
+      const documentUrl = docData.files?.[0]?.url;
+      if (!documentUrl) throw new Error("No URL returned for document");
+
+      // Upload selfie if provided
+      let selfieUrl = "";
+      if (selfieFile) {
+        const selfieForm = new FormData();
+        selfieForm.append("files", selfieFile);
+        const selfieRes = await fetch("/api/upload", { method: "POST", body: selfieForm });
+        if (selfieRes.ok) {
+          const selfieData = await selfieRes.json();
+          selfieUrl = selfieData.files?.[0]?.url || "";
+        }
       }
+
+      await fetch("/api/admin/verifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentType: docType, documentUrl, selfieUrl }),
+      });
+      setVerificationStatus("pending");
+      setRejectionReason("");
     } catch (err) {
       console.error("Verification upload error:", err);
+    } finally {
+      setVerificationUploading(false);
     }
   };
 
@@ -787,29 +829,102 @@ function Step5Fields() {
         )}
       </div>
 
-      <div className="rounded-[var(--radius-lg)] border border-primary-200 bg-primary-50 p-4">
-        <h3 className="text-sm font-semibold text-primary-800">ID Verification</h3>
-        <p className="text-xs text-primary-700 mt-0.5">
-          Verified profiles get 40% more responses. Upload Aadhaar, Passport, or Voter ID.
-        </p>
-        {verificationSubmitted ? (
-          <p className="mt-3 text-sm text-success font-medium">Verification submitted! We'll review it within 24 hours.</p>
-        ) : (
-          <>
+      <div className="rounded-[var(--radius-lg)] border border-primary-200 bg-primary-50 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-primary-800">ID Verification</h3>
+          <p className="text-xs text-primary-700 mt-0.5">
+            Verified profiles get 40% more responses. Upload a government-issued photo ID.
+          </p>
+        </div>
+
+        {/* Verified */}
+        {verificationStatus === "verified" && (
+          <p className="flex items-center gap-2 text-sm font-medium text-green-700">
+            <Shield className="h-4 w-4" /> Your profile is verified ✓
+          </p>
+        )}
+
+        {/* Pending */}
+        {verificationStatus === "pending" && (
+          <p className="text-sm text-amber-700 font-medium">
+            ⏳ Under review — we'll notify you within 24 hours.
+          </p>
+        )}
+
+        {/* Rejected — show reason + allow re-submit */}
+        {verificationStatus === "rejected" && (
+          <div className="rounded-[var(--radius-md)] bg-red-50 border border-red-200 p-3 text-xs text-red-700">
+            <p className="font-semibold mb-1">Verification rejected</p>
+            {rejectionReason && <p>{rejectionReason}</p>}
+            <p className="mt-1 text-red-600">Please re-submit with a clearer document below.</p>
+          </div>
+        )}
+
+        {/* Upload form — show for unverified or rejected */}
+        {(verificationStatus === "unverified" || verificationStatus === "rejected") && (
+          <div className="space-y-2">
+            {/* Document type selector */}
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="w-full rounded-[var(--radius-md)] border border-primary-200 bg-white px-3 py-2 text-sm text-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-300"
+            >
+              {DOC_TYPES.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+
+            {/* Document upload */}
             <input
               ref={verificationInputRef}
               type="file"
               accept="image/*,.pdf"
               className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleVerificationUpload(f);
-              }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) setVerificationFile(f); }}
             />
-            <Button variant="secondary" size="sm" className="mt-3" onClick={() => verificationInputRef.current?.click()}>
-              {verificationFile ? verificationFile.name : "Verify Now"}
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              onClick={() => verificationInputRef.current?.click()}
+            >
+              {verificationFile ? `📄 ${verificationFile.name}` : "Upload ID Document"}
             </Button>
-          </>
+
+            {/* Selfie upload (optional) */}
+            <input
+              ref={selfieInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelfieFile(f); }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              onClick={() => selfieInputRef.current?.click()}
+            >
+              {selfieFile ? `🤳 ${selfieFile.name}` : "Add Selfie (Optional)"}
+            </Button>
+
+            {/* Submit */}
+            {verificationFile && (
+              <Button
+                variant="primary"
+                size="sm"
+                fullWidth
+                disabled={verificationUploading}
+                onClick={handleVerificationUpload}
+              >
+                {verificationUploading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
+                ) : (
+                  "Submit for Verification"
+                )}
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </>

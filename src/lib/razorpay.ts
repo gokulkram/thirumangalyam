@@ -7,11 +7,11 @@ export interface RazorpayOrder {
   planId: string;
 }
 
-export async function createOrder(planId: string): Promise<RazorpayOrder> {
+export async function createOrder(planId: string, couponCode?: string): Promise<RazorpayOrder> {
   const res = await fetch("/api/payment/create-order", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ planId }),
+    body: JSON.stringify({ planId, couponCode }),
   });
 
   if (!res.ok) {
@@ -28,6 +28,7 @@ export async function verifyPayment(data: {
   razorpay_signature: string;
   planId: string;
   paymentMethod: string;
+  couponCode?: string;
 }) {
   const res = await fetch("/api/payment/verify", {
     method: "POST",

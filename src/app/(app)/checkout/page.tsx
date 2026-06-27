@@ -17,6 +17,7 @@ import {
   Loader2,
   FlaskConical,
   Landmark,
+  Tag,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -42,9 +43,35 @@ function CheckoutContent() {
   const [errorMsg, setErrorMsg] = useState("");
   const [testLog, setTestLog] = useState<{ type: "info" | "success" | "error"; msg: string }[]>([]);
 
+  // Coupon state
+  const [couponInput, setCouponInput] = useState("");
+  const [couponValidating, setCouponValidating] = useState(false);
+  const [couponResult, setCouponResult] = useState<{
+    valid: boolean; code?: string; discountAmount?: number;
+    originalAmount?: number; finalAmount?: number; message: string;
+  } | null>(null);
+
   const { userId, update: updateSession } = useCurrentUser();
 
   useEffect(() => { loadRazorpayScript(); }, []);
+
+  async function validateCoupon() {
+    if (!couponInput.trim()) return;
+    setCouponValidating(true);
+    try {
+      const res = await fetch("/api/payment/validate-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim(), planId: plan.id }),
+      });
+      const data = await res.json();
+      setCouponResult(data);
+    } catch {
+      setCouponResult({ valid: false, message: "Could not validate coupon" });
+    } finally {
+      setCouponValidating(false);
+    }
+  }
 
   function addLog(type: "info" | "success" | "error", msg: string) {
     setTestLog((prev) => [...prev, { type, msg }]);
@@ -60,7 +87,7 @@ function CheckoutContent() {
       const razorpayLoaded = await loadRazorpayScript();
       if (!razorpayLoaded) throw new Error("Failed to load Razorpay. Check your connection.");
 
-      const order = await createOrder(plan.id);
+      const order = await createOrder(plan.id, couponResult?.valid ? couponResult.code : undefined);
 
       const options: any = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -84,6 +111,7 @@ function CheckoutContent() {
               razorpay_signature: response.razorpay_signature,
               planId: plan.id,
               paymentMethod: "Razorpay",
+              couponCode: couponResult?.valid ? couponResult.code : undefined,
             });
             if (result.success) {
               await updateSession({ isPremium: true, plan: plan.id });
@@ -286,7 +314,7 @@ function CheckoutContent() {
                 <Loader2 className="h-4 w-4 animate-spin" /> Processing...
               </span>
             ) : (
-              `Pay ₹${plan.totalPrice.toLocaleString("en-IN")} — Choose Payment`
+              `Pay ₹${(couponResult?.valid ? couponResult.finalAmount! : plan.totalPrice).toLocaleString("en-IN")} — Choose Payment`
             )}
           </Button>
 
@@ -313,15 +341,57 @@ function CheckoutContent() {
                 <span className="text-sm text-neutral-600">Per month</span>
                 <span className="text-sm text-neutral-500">&#8377;{plan.monthlyPrice}/mo</span>
               </div>
-              {"savings" in plan && plan.savings && (
+              {"savings" in plan && plan.savings && !couponResult?.valid && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-neutral-600">Savings</span>
                   <Badge variant="success" size="sm">{plan.savings}</Badge>
                 </div>
               )}
+
+              {/* Coupon row */}
+              {couponResult?.valid ? (
+                <>
+                  <div className="flex items-center justify-between text-emerald-700">
+                    <span className="text-sm flex items-center gap-1"><Tag className="h-3.5 w-3.5" /> {couponResult.code}</span>
+                    <span className="text-sm font-medium">−₹{couponResult.discountAmount?.toLocaleString("en-IN")}</span>
+                  </div>
+                  <button onClick={() => { setCouponResult(null); setCouponInput(""); }} className="text-xs text-neutral-400 hover:text-red-500 -mt-1 self-end">Remove</button>
+                </>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponResult(null); }}
+                      onKeyDown={(e) => e.key === "Enter" && validateCoupon()}
+                      placeholder="Promo code"
+                      className="flex-1 h-9 rounded-[var(--radius-md)] border border-neutral-300 bg-white px-3 text-sm uppercase placeholder:normal-case placeholder:text-neutral-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-100 focus:outline-none"
+                    />
+                    <button
+                      onClick={validateCoupon}
+                      disabled={couponValidating || !couponInput.trim()}
+                      className="h-9 px-3 rounded-[var(--radius-md)] bg-neutral-100 text-sm font-medium text-neutral-700 hover:bg-neutral-200 disabled:opacity-50 transition-colors"
+                    >
+                      {couponValidating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                    </button>
+                  </div>
+                  {couponResult && !couponResult.valid && (
+                    <p className="text-xs text-red-600">{couponResult.message}</p>
+                  )}
+                </div>
+              )}
+
               <div className="border-t border-neutral-200 pt-3 flex items-center justify-between">
                 <span className="text-sm font-semibold text-neutral-900">Total</span>
-                <span className="text-xl font-bold text-neutral-900">&#8377;{plan.totalPrice.toLocaleString("en-IN")}</span>
+                <div className="text-right">
+                  {couponResult?.valid && (
+                    <p className="text-xs text-neutral-400 line-through">₹{plan.totalPrice.toLocaleString("en-IN")}</p>
+                  )}
+                  <span className="text-xl font-bold text-neutral-900">
+                    &#8377;{(couponResult?.valid ? couponResult.finalAmount! : plan.totalPrice).toLocaleString("en-IN")}
+                  </span>
+                </div>
               </div>
             </div>
 

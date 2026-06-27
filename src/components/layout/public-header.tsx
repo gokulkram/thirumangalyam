@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { Logo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
 import { useTranslation } from "@/lib/i18n";
+import { useSession } from "next-auth/react";
 
 export function PublicHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { t } = useTranslation();
+  const { data: session, status } = useSession();
 
   const NAV_LINKS = [
     { href: "/how-it-works", label: t.nav.howItWorks },
@@ -40,12 +42,23 @@ export function PublicHeader() {
         {/* Desktop auth buttons + language */}
         <div className="hidden md:flex items-center gap-3">
           <LanguageSwitcher />
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/login">{t.common.login}</Link>
-          </Button>
-          <Button variant="primary" size="sm" asChild>
-            <Link href="/register">{t.common.signUp}</Link>
-          </Button>
+          {status === "authenticated" ? (
+            <Button variant="primary" size="sm" asChild>
+              <Link href="/dashboard">
+                <LayoutDashboard className="h-4 w-4" />
+                My Dashboard
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login">{t.common.login}</Link>
+              </Button>
+              <Button variant="primary" size="sm" asChild>
+                <Link href="/register">{t.common.signUp}</Link>
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile menu toggle */}
@@ -76,12 +89,23 @@ export function PublicHeader() {
               <div className="flex justify-center mb-2">
                 <LanguageSwitcher />
               </div>
-              <Button variant="ghost" fullWidth asChild>
-                <Link href="/login">{t.common.login}</Link>
-              </Button>
-              <Button variant="primary" fullWidth asChild>
-                <Link href="/register">{t.common.signUpFree}</Link>
-              </Button>
+              {status === "authenticated" ? (
+                <Button variant="primary" fullWidth asChild>
+                  <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
+                    <LayoutDashboard className="h-4 w-4" />
+                    My Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" fullWidth asChild>
+                    <Link href="/login">{t.common.login}</Link>
+                  </Button>
+                  <Button variant="primary" fullWidth asChild>
+                    <Link href="/register">{t.common.signUpFree}</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </nav>
         </div>

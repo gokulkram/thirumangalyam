@@ -9,6 +9,7 @@ import {
   Report,
   Interest,
   ActivityLog,
+  SupportTicket,
 } from "@/lib/db/models";
 
 export async function GET() {
@@ -32,6 +33,9 @@ export async function GET() {
       revenueResult,
       pendingVerificationsCount,
       openReportsCount,
+      openTicketsCount,
+      totalInterests,
+      acceptedInterests,
       newUsersThisWeek,
       activeToday,
       recentActivity,
@@ -45,6 +49,9 @@ export async function GET() {
       ]),
       VerificationRequest.countDocuments({ status: "pending" }),
       Report.countDocuments({ status: "open" }),
+      SupportTicket.countDocuments({ status: { $in: ["open", "in_progress"] } }),
+      Interest.countDocuments({}),
+      Interest.countDocuments({ status: "accepted" }),
       User.countDocuments({ createdAt: { $gte: startOfWeek } }),
       User.countDocuments({
         $or: [
@@ -93,11 +100,20 @@ export async function GET() {
           )
         : 0;
 
+    const totalProfileViews = allProfiles.reduce((s: number, p: any) => s + (p.profileViews || 0), 0);
+    const interestAcceptRate = totalInterests > 0 ? Math.round((acceptedInterests / totalInterests) * 100) : 0;
+
     const stats = {
       totalUsers,
       activeToday,
       pendingVerifications: pendingVerificationsCount,
       openReports: openReportsCount,
+      openTickets: openTicketsCount,
+      totalInterests,
+      acceptedInterests,
+      interestAcceptRate,
+      totalProfileViews,
+      avgProfileViews: totalUsers > 0 ? Math.round(totalProfileViews / totalUsers) : 0,
       monthlyRevenue,
       newUsersThisWeek,
       totalPremiumUsers: premiumUsers.length,

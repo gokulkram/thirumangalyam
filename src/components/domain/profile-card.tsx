@@ -39,15 +39,17 @@ export function ProfileCard({
             src={profile.primaryPhotoUrl}
             alt={profile.fullName}
             fill
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            className="object-cover object-top transition-transform duration-300 group-hover:scale-105"
             sizes="(max-width: 768px) 100vw, 33vw"
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-neutral-200 text-neutral-400">
-            <span className="text-4xl font-bold">
-              {profile.fullName.charAt(0)}
-            </span>
-          </div>
+          <Image
+            src={profile.gender === "male" ? "/profiles/groom.jpg" : "/profiles/bride.jpg"}
+            alt={profile.fullName}
+            fill
+            className="object-cover object-top"
+            sizes="(max-width: 768px) 100vw, 33vw"
+          />
         )}
 
         {/* Badges overlay */}

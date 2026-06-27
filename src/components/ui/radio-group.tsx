@@ -26,7 +26,7 @@ function RadioGroup({
         className={cn(
           layout === "horizontal" && "flex flex-wrap gap-4",
           layout === "vertical" && "flex flex-col gap-2.5",
-          layout === "cards" && "grid grid-cols-2 gap-3 sm:grid-cols-3",
+          layout === "cards" && "grid grid-cols-3 gap-2 sm:gap-3",
           className
         )}
         {...props}
@@ -35,7 +35,7 @@ function RadioGroup({
           layout === "cards" ? (
             <label
               key={option.value}
-              className="relative flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-lg)] border-[1.5px] border-neutral-200 p-4 text-center transition-colors has-[data-state=checked]:border-primary-600 has-[data-state=checked]:bg-primary-50 hover:border-neutral-300"
+              className="relative flex cursor-pointer flex-col items-center gap-1 rounded-[var(--radius-lg)] border-[1.5px] border-neutral-200 p-2.5 sm:p-4 text-center transition-colors has-[data-state=checked]:border-primary-600 has-[data-state=checked]:bg-primary-50 hover:border-neutral-300"
             >
               <RadioGroupPrimitive.Item value={option.value} className="sr-only" />
               <span className="text-sm font-medium text-neutral-800">{option.label}</span>

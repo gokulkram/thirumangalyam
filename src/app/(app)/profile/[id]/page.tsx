@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button, Badge, Tabs, TabsList, TabsTrigger, TabsContent, Card } from "@/components/ui";
 import { MatchScore, VerifiedBadge, ProfileCard, PremiumUpsell } from "@/components/domain";
+import type { ScoreFactor } from "@/components/domain/match-score";
 import {
   Heart,
   Share2,
@@ -22,9 +23,59 @@ import {
   MessageSquare,
   ExternalLink,
   Loader2,
+  FileText,
+  Users,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+
+// ─── Enum → Human-readable label maps ────────────────────────────────────────
+const ENUM_LABELS: Record<string, string> = {
+  // Marital status
+  never_married:    "Never Married",
+  divorced:         "Divorced",
+  widowed:          "Widowed",
+  awaiting_divorce: "Awaiting Divorce",
+  // Diet
+  vegetarian:       "Vegetarian",
+  non_vegetarian:   "Non-Vegetarian",
+  eggetarian:       "Eggetarian",
+  vegan:            "Vegan",
+  must_veg:         "Must be Vegetarian",
+  doesnt_matter:    "Doesn't Matter",
+  // Smoking / Drinking
+  no:               "No",
+  occasionally:     "Occasionally",
+  yes:              "Yes",
+  occasionally_ok:  "Occasionally OK",
+  // Family type
+  joint:            "Joint Family",
+  nuclear:          "Nuclear Family",
+  // Star compatibility
+  must:             "Must Match",
+  preferred:        "Preferred",
+  not_important:    "Not Important",
+  // Dosham
+  must_not:         "Must Not Have",
+  // Children
+  doesnt_matter_children: "Doesn't Matter",
+  // Employment
+  any:              "Any",
+  employed:         "Employed",
+  business:         "Business",
+  government:       "Government",
+  not_working_ok:   "Not Working (OK)",
+  // Citizenship
+  indian:           "Indian",
+  nri:              "NRI",
+  open_to_relocate: "Open to Relocate",
+};
+
+/** Converts a raw DB enum value to a display label. Falls back to Title Casing the raw value. */
+function lbl(value: string): string {
+  if (!value) return "";
+  return ENUM_LABELS[value] ?? value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 interface ProfileData {
   _id: string;
@@ -73,6 +124,7 @@ interface ProfileData {
     star: string;
     rashi: string;
     dosham: string;
+    horoscopeUrl?: string;
   };
   compatibilityScore: number;
   compatibilityFactors: { label: string; matched: boolean }[];
@@ -97,11 +149,15 @@ export default function ProfileViewPage({
   const [reported, setReported] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const { isPremium } = useCurrentUser();
+  const [canViewContacts, setCanViewContacts] = useState(false);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sendingInterest, setSendingInterest] = useState(false);
   const [togglingShortlist, setTogglingShortlist] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [similarProfiles, setSimilarProfiles] = useState<any[]>([]);
+  const [compatibilityScore, setCompatibilityScore] = useState(0);
+  const [compatibilityBreakdown, setCompatibilityBreakdown] = useState<ScoreFactor[]>([]);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -130,13 +186,13 @@ export default function ProfileViewPage({
           verificationStatus: p.verificationStatus || "unverified",
           aboutMe: p.aboutMe || "",
           height: p.height || "",
-          diet: p.diet || "",
+          diet: lbl(p.diet || ""),
           motherTongue: p.motherTongue || "",
-          smoking: p.smoking || "",
-          maritalStatus: p.maritalStatus || "",
-          drinking: p.drinking || "",
+          smoking: lbl(p.smoking || ""),
+          maritalStatus: lbl(p.maritalStatus || ""),
+          drinking: lbl(p.drinking || ""),
           hobbies: p.hobbies || [],
-          familyType: p.familyType || "",
+          familyType: lbl(p.familyType || ""),
           familyStatus: p.familyStatus || "",
           fatherOccupation: p.fatherOccupation || "",
           motherOccupation: p.motherOccupation || "",
@@ -149,19 +205,24 @@ export default function ProfileViewPage({
           annualIncome: p.annualIncome || "",
           workLocation: p.workLocation || "",
           partnerPreferences: {
-            ageRange: data.partnerPreferences?.ageRange ? `${data.partnerPreferences.ageRange[0]} - ${data.partnerPreferences.ageRange[1]} yrs` : "",
-            heightRange: data.partnerPreferences?.heightRange ? `${data.partnerPreferences.heightRange[0]} - ${data.partnerPreferences.heightRange[1]}` : "",
+            ageRange: data.partnerPreferences?.ageRange
+              ? `${data.partnerPreferences.ageRange[0]} – ${data.partnerPreferences.ageRange[1]} yrs`
+              : "",
+            heightRange: data.partnerPreferences?.heightRange
+              ? `${data.partnerPreferences.heightRange[0]} – ${data.partnerPreferences.heightRange[1]}`
+              : "",
             education: (data.partnerPreferences?.education || []).join(", "),
             occupation: (data.partnerPreferences?.occupation || []).join(", "),
             community: (data.partnerPreferences?.communities || []).join(", "),
             location: (data.partnerPreferences?.locations || []).join(", "),
-            starMatch: data.partnerPreferences?.starCompatibility || "",
-            diet: data.partnerPreferences?.diet || "",
+            starMatch: lbl(data.partnerPreferences?.starCompatibility || ""),
+            diet: lbl(data.partnerPreferences?.diet || ""),
           },
           horoscope: {
             star: p.star || "",
             rashi: p.rashi || "",
             dosham: p.hasDosham === true ? "Yes" : p.hasDosham === false ? "No" : "Unknown",
+            horoscopeUrl: p.horoscopeUrl || "",
           },
           compatibilityScore: 0,
           compatibilityFactors: [],
@@ -176,6 +237,7 @@ export default function ProfileViewPage({
         setProfile(mapped);
         setInterestSent(mapped.interestSent ?? false);
         setIsShortlisted(mapped.isShortlisted ?? false);
+        setCanViewContacts(data.canViewContacts ?? false);
       } catch (err) {
         console.error("Error fetching profile:", err);
       } finally {
@@ -183,6 +245,20 @@ export default function ProfileViewPage({
       }
     }
     fetchProfile();
+
+    // Fetch similar profiles + compatibility in parallel (non-blocking)
+    fetch(`/api/profiles/${id}/similar`)
+      .then((r) => r.json())
+      .then((d) => setSimilarProfiles(d.profiles || []))
+      .catch(() => {});
+
+    fetch(`/api/compatibility/${id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.score !== undefined) setCompatibilityScore(d.score);
+        if (d.factors?.length) setCompatibilityBreakdown(d.factors);
+      })
+      .catch(() => {});
   }, [id]);
 
   const handleSendInterest = async () => {
@@ -260,7 +336,7 @@ export default function ProfileViewPage({
               src={profile.primaryPhotoUrl}
               alt={profile.name}
               fill
-              className="object-cover"
+              className="object-cover object-top"
             />
           ) : (
             <div className="flex items-center justify-center h-full text-neutral-400 text-lg">
@@ -291,7 +367,7 @@ export default function ProfileViewPage({
                 key={i}
                 className="h-16 w-16 rounded-[var(--radius-md)] bg-neutral-200 border-2 border-transparent hover:border-primary-400 cursor-pointer transition-colors overflow-hidden relative"
               >
-                <Image src={photo} alt={`Photo ${i + 1}`} fill className="object-cover" />
+                <Image src={photo} alt={`Photo ${i + 1}`} fill className="object-cover object-top" />
               </div>
             ))}
           </div>
@@ -320,10 +396,11 @@ export default function ProfileViewPage({
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <Button
               variant={interestSent ? "secondary" : "primary"}
               size="lg"
+              className="col-span-2 sm:col-span-1"
               onClick={handleSendInterest}
               disabled={interestSent || sendingInterest}
             >
@@ -362,9 +439,10 @@ export default function ProfileViewPage({
               {t.profile.compatibilityLabel}
             </h3>
             <MatchScore
-              score={profile.compatibilityScore ?? 0}
+              score={compatibilityScore || profile.compatibilityScore || 0}
               size="lg"
-              factors={profile.compatibilityFactors ?? []}
+              breakdown={compatibilityBreakdown.length > 0 ? compatibilityBreakdown : undefined}
+              factors={compatibilityBreakdown.length === 0 ? (profile.compatibilityFactors ?? []) : undefined}
             />
           </Card>
 
@@ -373,7 +451,7 @@ export default function ProfileViewPage({
             <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-4">
               {t.shared.contactDetails}
             </h3>
-            {isPremium ? (
+            {canViewContacts ? (
               <div className="space-y-3">
                 {profile.phone && (
                   <div className="flex items-center gap-3">
@@ -546,6 +624,25 @@ export default function ProfileViewPage({
               {profile.horoscope?.rashi && <DetailRow label={t.profile.rashi} value={profile.horoscope.rashi} />}
               {profile.horoscope?.dosham && <DetailRow label={t.profile.dosham} value={profile.horoscope.dosham} />}
             </div>
+
+            {profile.horoscope?.horoscopeUrl && canViewContacts && (
+              <a
+                href={profile.horoscope.horoscopeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-4 flex items-center gap-2 rounded-[var(--radius-md)] border border-primary-200 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100 transition-colors w-fit"
+              >
+                <FileText className="h-4 w-4" /> View Horoscope Document
+                <ExternalLink className="h-3.5 w-3.5 ml-1" />
+              </a>
+            )}
+
+            {profile.horoscope?.horoscopeUrl && !canViewContacts && (
+              <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-md)] border border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-500">
+                <Lock className="h-4 w-4" /> Horoscope document available — upgrade to Premium to view
+              </div>
+            )}
+
             <Button variant="premium" asChild>
               <Link href={`/horoscope-match/${id}`}>
                 <Star className="h-4 w-4" /> {t.profile.viewHoroscopeMatch}
@@ -557,6 +654,45 @@ export default function ProfileViewPage({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Similar Profiles */}
+      {similarProfiles.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-neutral-400" />
+            <h2 className="text-base font-semibold text-neutral-800">Similar Profiles</h2>
+            <span className="text-xs text-neutral-400">— same community, similar age</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {similarProfiles.map((sp) => (
+              <Link
+                key={sp.id}
+                href={`/profile/${sp.userId || sp.id}`}
+                className="group flex flex-col rounded-[var(--radius-lg)] border border-neutral-200 bg-white overflow-hidden hover:border-primary-300 hover:shadow-sm transition-all"
+              >
+                <div className="aspect-[3/4] bg-neutral-100 relative overflow-hidden">
+                  {sp.primaryPhoto ? (
+                    <img src={sp.primaryPhoto} alt={sp.name} className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-neutral-300 text-2xl font-bold">
+                      {sp.name?.charAt(0) || "?"}
+                    </div>
+                  )}
+                  {sp.verificationStatus === "verified" && (
+                    <div className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                      <Check className="h-3 w-3 text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2">
+                  <p className="text-xs font-semibold text-neutral-900 truncate">{sp.name}, {sp.age}</p>
+                  <p className="text-[10px] text-neutral-500 truncate mt-0.5">{sp.occupation || sp.community}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Report/Block */}
       <div className="flex items-center justify-center gap-6 pt-4 text-sm">

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Button, Input, Select, Slider, Badge, Card, Tabs, TabsList, TabsTrigger, TabsContent, Checkbox } from "@/components/ui";
@@ -23,9 +24,15 @@ import {
   Eye,
   ArrowUpDown,
   Loader2,
+  Crown,
+  Lock,
+  Bookmark,
+  BookmarkCheck,
+  Trash2,
 } from "lucide-react";
 import { COMMUNITIES, OCCUPATIONS, EDUCATION_LEVELS, HEIGHT_OPTIONS, MOTHER_TONGUES, NAKSHATRAS, INCOME_RANGES, STATES, STATE_CITIES } from "@/lib/constants";
 import { useTranslation } from "@/lib/i18n";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { MatchCard } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -119,60 +126,134 @@ const defaultFilters: FilterState = {
   profileVerified: false,
 };
 
+// Wrap in Suspense so useSearchParams works correctly in Next.js App Router
 export default function SearchPage() {
+  return (
+    <Suspense>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+const FREE_SEARCH_LIMIT = 10;
+
+function SearchPageInner() {
+  const searchParams = useSearchParams();
+  const { isPremium } = useCurrentUser();
+
+  // Read URL params (passed from landing page search form)
+  const urlCommunity  = searchParams.get("community")  || "";
+  const urlOccupation = searchParams.get("occupation") || "";
+  const urlCity       = searchParams.get("city")       || "";
+  const urlGender     = searchParams.get("gender")     || "";
+  const urlAgeMin     = searchParams.get("ageMin")     ? parseInt(searchParams.get("ageMin")!) : 22;
+  const urlAgeMax     = searchParams.get("ageMax")     ? parseInt(searchParams.get("ageMax")!) : 32;
+
   const [showFilters, setShowFilters] = useState(false);
   const [showDesktopFilters, setShowDesktopFilters] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(6);
+  const [serverPage, setServerPage] = useState(1);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortBy, setSortBy] = useState<SortKey>("relevance");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeQuickFilters, setActiveQuickFilters] = useState<Set<string>>(new Set());
+  // Keyed by userId (User._id) — consistent with shortlist API
   const [shortlisted, setShortlisted] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<FilterState>({ ...defaultFilters, maritalStatus: new Set(), diet: new Set() });
+  const [sentInterests, setSentInterests] = useState<Set<string>>(new Set());
+  const [savedSearches, setSavedSearches] = useState<{ id: string; name: string; filters: any }[]>([]);
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveNameInput, setSaveNameInput] = useState("");
+  const [savingSearch, setSavingSearch] = useState(false);
+
+  // Initialize filters from URL params — correctly reads them on both server and client
+  const [filters, setFilters] = useState<FilterState>(() => ({
+    ...defaultFilters,
+    maritalStatus: new Set<string>(),
+    diet: new Set<string>(),
+    community: urlCommunity,
+    occupation: urlOccupation,
+    city: urlCity,
+    ageRange: [urlAgeMin, urlAgeMax] as [number, number],
+  }));
+
   const { t } = useTranslation();
 
   const [results, setResults] = useState<MatchCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
 
-  const fetchResults = useCallback(async () => {
+  // Build the URLSearchParams for a given text query (used by both fetch and loadMore)
+  const buildSearchParams = useCallback((page: number, textQuery = "") => {
+    const params = new URLSearchParams();
+    if (urlGender) params.set("gender", urlGender);
+    if (filters.ageRange[0] !== 22) params.set("ageMin", String(filters.ageRange[0]));
+    if (filters.ageRange[1] !== 32) params.set("ageMax", String(filters.ageRange[1]));
+    if (filters.heightMin) params.set("heightMin", filters.heightMin);
+    if (filters.heightMax) params.set("heightMax", filters.heightMax);
+    if (filters.community) params.set("community", filters.community);
+    if (filters.motherTongue) params.set("motherTongue", filters.motherTongue);
+    if (filters.education) params.set("education", filters.education);
+    if (filters.occupation) params.set("occupation", filters.occupation);
+    if (filters.city) params.set("city", filters.city);
+    if (filters.nakshatra) params.set("star", filters.nakshatra);
+    // Server-side name/city text search (2+ chars)
+    if (textQuery.trim().length >= 2) params.set("q", textQuery.trim());
+    params.set("page", String(page));
+    params.set("limit", "20");
+    return params;
+  }, [filters, urlGender]);
+
+  const fetchResults = useCallback(async (textQuery = "") => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filters.ageRange[0] !== 22) params.set("ageMin", String(filters.ageRange[0]));
-      if (filters.ageRange[1] !== 32) params.set("ageMax", String(filters.ageRange[1]));
-      if (filters.heightMin) params.set("heightMin", filters.heightMin);
-      if (filters.heightMax) params.set("heightMax", filters.heightMax);
-      if (filters.community) params.set("community", filters.community);
-      if (filters.motherTongue) params.set("motherTongue", filters.motherTongue);
-      if (filters.education) params.set("education", filters.education);
-      if (filters.occupation) params.set("occupation", filters.occupation);
-      if (filters.city) params.set("city", filters.city);
-      if (filters.nakshatra) params.set("star", filters.nakshatra);
-      params.set("page", "1");
-      params.set("limit", "30");
-
+      const params = buildSearchParams(1, textQuery);
       const res = await fetch(`/api/search?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setResults(data.profiles || []);
-        setTotalCount(data.total || 0);
+        setTotalCount(data.pagination?.total || 0);
+        setServerPage(1);
+        setServerTotalPages(data.pagination?.totalPages || 1);
       }
     } catch (err) {
       console.error("Search failed:", err);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [buildSearchParams]);
 
-  // Fetch shortlisted IDs on mount
+  const loadMoreFromServer = async () => {
+    if (loadingMore || serverPage >= serverTotalPages) return;
+    const nextPage = serverPage + 1;
+    setLoadingMore(true);
+    try {
+      const params = buildSearchParams(nextPage, searchQuery);
+      const res = await fetch(`/api/search?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setResults((prev) => [...prev, ...(data.profiles || [])]);
+        setServerPage(nextPage);
+        setServerTotalPages(data.pagination?.totalPages || serverTotalPages);
+      }
+    } catch (err) {
+      console.error("Load more failed:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Fetch shortlisted user IDs on mount
   useEffect(() => {
     async function fetchShortlist() {
       try {
         const res = await fetch("/api/shortlist");
         if (res.ok) {
           const data = await res.json();
-          const ids = new Set<string>((data.shortlist || []).map((s: any) => s.shortlistedUserId));
+          // Key by shortlistedUserId (User._id) — matches what we send on toggle
+          const ids = new Set<string>(
+            (data.shortlist || []).map((s: any) => s.shortlistedUserId?.toString()).filter(Boolean)
+          );
           setShortlisted(ids);
         }
       } catch (err) {
@@ -182,10 +263,91 @@ export default function SearchPage() {
     fetchShortlist();
   }, []);
 
-  // Fetch results on mount
+  const handleSendInterest = async (userId: string) => {
+    if (sentInterests.has(userId)) return;
+    setSentInterests((prev) => new Set(prev).add(userId));
+    try {
+      const res = await fetch("/api/interests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toUserId: userId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.limitReached) {
+          alert("Daily limit reached. Upgrade to Premium to send unlimited interests.");
+        }
+        setSentInterests((prev) => { const n = new Set(prev); n.delete(userId); return n; });
+      }
+    } catch {
+      setSentInterests((prev) => { const n = new Set(prev); n.delete(userId); return n; });
+    }
+  };
+
+  // Fetch results whenever filters or gender change
   useEffect(() => {
-    fetchResults();
-  }, []);
+    fetchResults(searchQuery);
+  }, [fetchResults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced server-side name search: re-fetch 400ms after user stops typing
+  useEffect(() => {
+    if (searchQuery.length === 0) {
+      // Empty query — re-fetch without q param to show all results
+      fetchResults("");
+      return;
+    }
+    if (searchQuery.length < 2) return; // wait for at least 2 chars
+    const timer = setTimeout(() => fetchResults(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load saved searches on mount (premium only)
+  useEffect(() => {
+    if (!isPremium) return;
+    fetch("/api/searches")
+      .then((r) => r.json())
+      .then((d) => setSavedSearches(d.searches || []))
+      .catch(() => {});
+  }, [isPremium]);
+
+  function serializeFilters(f: FilterState) {
+    return { ...f, maritalStatus: Array.from(f.maritalStatus), diet: Array.from(f.diet) };
+  }
+
+  function loadSavedSearch(saved: any) {
+    setFilters({
+      ...defaultFilters,
+      ...saved,
+      maritalStatus: new Set(saved.maritalStatus || []),
+      diet: new Set(saved.diet || []),
+    });
+  }
+
+  async function saveCurrentSearch() {
+    if (!saveNameInput.trim()) return;
+    setSavingSearch(true);
+    try {
+      const res = await fetch("/api/searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveNameInput.trim(), filters: serializeFilters(filters) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSavedSearches((prev) => [data.search, ...prev]);
+      setShowSaveInput(false);
+      setSaveNameInput("");
+    } catch (e: any) {
+      alert(e.message || "Failed to save search");
+    } finally {
+      setSavingSearch(false);
+    }
+  }
+
+  async function deleteSavedSearch(id: string) {
+    setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+    await fetch(`/api/searches/${id}`, { method: "DELETE" }).catch(() => {});
+  }
 
   const activeFilterCount = [
     filters.community,
@@ -218,13 +380,13 @@ export default function SearchPage() {
     });
   };
 
-  const toggleShortlist = async (id: string) => {
-    const isCurrently = shortlisted.has(id);
-    // Optimistic update
+  // id here is always profile.userId (User._id) — consistent with shortlist API
+  const toggleShortlist = async (userId: string) => {
+    const isCurrently = shortlisted.has(userId);
     setShortlisted((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
       return next;
     });
 
@@ -233,21 +395,20 @@ export default function SearchPage() {
         await fetch("/api/shortlist", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shortlistedUserId: id }),
+          body: JSON.stringify({ shortlistedUserId: userId }),
         });
       } else {
         await fetch("/api/shortlist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shortlistedUserId: id }),
+          body: JSON.stringify({ shortlistedUserId: userId }),
         });
       }
     } catch {
-      // Revert on error
       setShortlisted((prev) => {
         const next = new Set(prev);
-        if (isCurrently) next.add(id);
-        else next.delete(id);
+        if (isCurrently) next.add(userId);
+        else next.delete(userId);
         return next;
       });
     }
@@ -273,8 +434,11 @@ export default function SearchPage() {
     return list;
   }, [results, activeQuickFilters, searchQuery, sortBy]);
 
-  const visibleResults = filtered.slice(0, visibleCount);
-  const remaining = filtered.length - visibleCount;
+  // Free users: cap at FREE_SEARCH_LIMIT; premium users: show all fetched results
+  const allowedResults = isPremium ? filtered : filtered.slice(0, FREE_SEARCH_LIMIT);
+  const lockedCount = isPremium ? 0 : Math.max(0, filtered.length - FREE_SEARCH_LIMIT);
+  const visibleResults = allowedResults;
+  const hasMoreServer = isPremium && serverPage < serverTotalPages;
 
   return (
     <div className="space-y-0">
@@ -409,13 +573,56 @@ export default function SearchPage() {
         </div>
       </div>
 
+      {/* Free plan limits banner */}
+      {!isPremium && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mt-4">
+          <Crown className="h-5 w-5 text-amber-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">Free Plan Limits</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              {FREE_SEARCH_LIMIT} daily matches &middot; 5 interests/day &middot; No chat or contact details
+            </p>
+          </div>
+          <Link
+            href="/premium"
+            className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors"
+          >
+            Upgrade
+          </Link>
+        </div>
+      )}
+
+      {/* Saved Searches chips (premium) */}
+      {isPremium && savedSearches.length > 0 && (
+        <div className="flex items-center gap-2 pt-4 flex-wrap">
+          <span className="flex items-center gap-1 text-xs font-semibold text-neutral-500 shrink-0">
+            <BookmarkCheck className="h-3.5 w-3.5" /> Saved:
+          </span>
+          {savedSearches.map((s) => (
+            <div key={s.id} className="group flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs text-neutral-700 hover:border-primary-300 transition-colors">
+              <button onClick={() => loadSavedSearch(s.filters)} className="font-medium hover:text-primary-700">
+                {s.name}
+              </button>
+              <button
+                onClick={() => deleteSavedSearch(s.id)}
+                className="hidden group-hover:block text-neutral-400 hover:text-red-500 transition-colors ml-0.5"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Main content area */}
       <div className="flex gap-6 pt-6">
         {/* Desktop filter sidebar */}
         {showDesktopFilters && (
           <aside className="hidden lg:block w-[280px] shrink-0">
-            <div className="sticky top-20 rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50">
+            {/* sticky + max-height so the panel never exceeds the viewport */}
+            <div className="sticky top-[66px] rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden flex flex-col max-h-[calc(100dvh-82px)]">
+              {/* Pinned header — always visible */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50 shrink-0">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-semibold text-neutral-900">{t.search.refineSearch}</h2>
                   {activeFilterCount > 0 && (
@@ -426,8 +633,50 @@ export default function SearchPage() {
                 </div>
                 <button onClick={resetFilters} className="text-xs text-primary-600 hover:underline font-medium">{t.search.resetAll}</button>
               </div>
-              <div className="p-5">
-                <FilterPanel filters={filters} setFilters={setFilters} onReset={resetFilters} onApply={fetchResults} />
+                {/* Scrollable filter content — no CTA inside */}
+              <div className="p-5 overflow-y-auto flex-1">
+                <FilterPanel filters={filters} setFilters={setFilters} onReset={resetFilters} onApply={fetchResults} hideCta />
+              </div>
+              {/* Pinned footer — always visible */}
+              <div className="shrink-0 border-t border-neutral-100 bg-white px-4 py-3 space-y-2">
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" fullWidth onClick={resetFilters}>{t.search.clearAll}</Button>
+                  <Button variant="primary" size="sm" fullWidth onClick={() => { fetchResults(searchQuery); }}>
+                    {t.search.showResults}
+                  </Button>
+                </div>
+                {isPremium && (
+                  showSaveInput ? (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={saveNameInput}
+                        onChange={(e) => setSaveNameInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && saveCurrentSearch()}
+                        placeholder="Name this search..."
+                        autoFocus
+                        className="flex-1 h-8 rounded-md border border-neutral-300 px-2 text-xs focus:border-primary-500 focus:ring-1 focus:ring-primary-100 focus:outline-none"
+                      />
+                      <button
+                        onClick={saveCurrentSearch}
+                        disabled={savingSearch || !saveNameInput.trim()}
+                        className="h-8 px-2.5 rounded-md bg-primary-600 text-white text-xs font-medium disabled:opacity-50 hover:bg-primary-700 transition-colors"
+                      >
+                        {savingSearch ? "…" : "Save"}
+                      </button>
+                      <button onClick={() => { setShowSaveInput(false); setSaveNameInput(""); }} className="h-8 px-2 rounded-md text-neutral-400 hover:text-neutral-600">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowSaveInput(true)}
+                      className="flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-800 font-medium w-full justify-center py-1"
+                    >
+                      <Bookmark className="h-3.5 w-3.5" /> Save this search
+                    </button>
+                  )
+                )}
               </div>
             </div>
           </aside>
@@ -452,7 +701,7 @@ export default function SearchPage() {
               </div>
               <div className="sticky bottom-0 bg-white border-t border-neutral-100 px-6 py-4 flex gap-3">
                 <Button variant="ghost" size="md" fullWidth onClick={resetFilters}>{t.search.clearAll}</Button>
-                <Button variant="primary" size="md" fullWidth onClick={() => { fetchResults(); setShowFilters(false); }}>
+                <Button variant="primary" size="md" fullWidth onClick={() => { fetchResults(searchQuery); setShowFilters(false); }}>
                   {t.search.showResults}
                 </Button>
               </div>
@@ -493,8 +742,10 @@ export default function SearchPage() {
                 <ModernProfileCard
                   key={profile.id}
                   profile={profile}
-                  isShortlisted={shortlisted.has(profile.id)}
-                  onToggleShortlist={() => toggleShortlist(profile.id)}
+                  isShortlisted={shortlisted.has(profile.userId)}
+                  interestSent={sentInterests.has(profile.userId)}
+                  onToggleShortlist={() => toggleShortlist(profile.userId)}
+                  onSendInterest={() => handleSendInterest(profile.userId)}
                 />
               ))}
             </div>
@@ -504,31 +755,60 @@ export default function SearchPage() {
                 <ListProfileCard
                   key={profile.id}
                   profile={profile}
-                  isShortlisted={shortlisted.has(profile.id)}
-                  onToggleShortlist={() => toggleShortlist(profile.id)}
+                  isShortlisted={shortlisted.has(profile.userId)}
+                  interestSent={sentInterests.has(profile.userId)}
+                  onToggleShortlist={() => toggleShortlist(profile.userId)}
+                  onSendInterest={() => handleSendInterest(profile.userId)}
                 />
               ))}
             </div>
           )}
 
-          {/* Load more */}
-          {!loading && remaining > 0 && (
+          {/* Load more — fetch next page from server */}
+          {!loading && hasMoreServer && (
             <div className="mt-10 text-center">
               <Button
                 variant="secondary"
                 size="lg"
                 className="px-10"
-                onClick={() => setVisibleCount((c) => Math.min(c + 3, filtered.length))}
+                disabled={loadingMore}
+                onClick={loadMoreFromServer}
               >
-                {t.search.loadMore}
-                <span className="ml-1.5 text-xs font-normal text-neutral-400">({remaining} {t.search.remaining})</span>
+                {loadingMore ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
+                ) : (
+                  <>{t.search.loadMore}
+                    <span className="ml-1.5 text-xs font-normal text-neutral-400">
+                      (page {serverPage}/{serverTotalPages})
+                    </span>
+                  </>
+                )}
               </Button>
             </div>
           )}
 
-          {!loading && filtered.length > 0 && visibleCount >= filtered.length && (
+          {/* Locked profiles upgrade prompt for free users */}
+          {!loading && !isPremium && lockedCount > 0 && (
+            <div className="mt-6 rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/60 p-8 text-center">
+              <Lock className="h-10 w-10 text-amber-400 mx-auto mb-3" />
+              <p className="text-base font-semibold text-neutral-800">
+                {lockedCount} more {lockedCount === 1 ? "profile" : "profiles"} hidden
+              </p>
+              <p className="mt-1 text-sm text-neutral-500">
+                Free plan shows only {FREE_SEARCH_LIMIT} profiles per day. Upgrade to see all.
+              </p>
+              <Button variant="primary" size="md" className="mt-4 gold-gradient" asChild>
+                <Link href="/premium">
+                  <Crown className="h-4 w-4 mr-1.5" />
+                  Upgrade to Premium
+                </Link>
+              </Button>
+            </div>
+          )}
+
+          {!loading && allowedResults.length > 0 && !hasMoreServer && isPremium && (
             <p className="mt-8 text-center text-xs text-neutral-400">
-              {t.search.seenAll.replace("{count}", String(filtered.length))}
+              {t.search.seenAll.replace("{count}", String(allowedResults.length))}
             </p>
           )}
         </div>
@@ -543,11 +823,15 @@ export default function SearchPage() {
 function ModernProfileCard({
   profile,
   isShortlisted,
+  interestSent,
   onToggleShortlist,
+  onSendInterest,
 }: {
   profile: MatchCard;
   isShortlisted: boolean;
+  interestSent: boolean;
   onToggleShortlist: () => void;
+  onSendInterest: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -560,7 +844,7 @@ function ModernProfileCard({
               src={profile.primaryPhotoUrl}
               alt={profile.fullName}
               fill
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
+              className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
               sizes="(max-width: 768px) 100vw, 33vw"
             />
           ) : (
@@ -688,11 +972,15 @@ function ModernProfileCard({
 function ListProfileCard({
   profile,
   isShortlisted,
+  interestSent,
   onToggleShortlist,
+  onSendInterest,
 }: {
   profile: MatchCard;
   isShortlisted: boolean;
+  interestSent: boolean;
   onToggleShortlist: () => void;
+  onSendInterest: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -705,7 +993,7 @@ function ListProfileCard({
               src={profile.primaryPhotoUrl}
               alt={profile.fullName}
               fill
-              className="object-cover"
+              className="object-cover object-top"
               sizes="176px"
             />
           ) : (
@@ -740,7 +1028,7 @@ function ListProfileCard({
                   <Badge variant="premium" size="sm">Premium</Badge>
                 )}
               </div>
-              <p className="text-sm text-neutral-600 truncate mt-0.5">{profile.profileId}</p>
+              <p className="text-sm text-neutral-600 truncate mt-0.5">{profile.community} &middot; {profile.height}</p>
             </div>
             {profile.compatibilityScore !== undefined && (
               <div className={cn(
@@ -783,8 +1071,14 @@ function ListProfileCard({
           <Button variant="primary" size="sm" className="rounded-xl" asChild>
             <Link href={`/profile/${profile.profileId}`}>View Profile</Link>
           </Button>
-          <Button variant="secondary" size="sm" className="rounded-xl">
-            Send Interest
+          <Button
+            variant="secondary"
+            size="sm"
+            className="rounded-xl"
+            onClick={onSendInterest}
+            disabled={interestSent}
+          >
+            {interestSent ? "Interest Sent" : "Send Interest"}
           </Button>
           <button
             onClick={onToggleShortlist}
@@ -811,11 +1105,13 @@ function FilterPanel({
   setFilters,
   onReset,
   onApply,
+  hideCta = false,
 }: {
   filters: FilterState;
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
   onReset: () => void;
   onApply: () => void;
+  hideCta?: boolean;
 }) {
   const { t } = useTranslation();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -1077,10 +1373,12 @@ function FilterPanel({
         </div>
       </FilterSection>
 
-      <div className="pt-4 flex gap-2">
-        <Button variant="ghost" size="sm" fullWidth onClick={onReset}>Clear</Button>
-        <Button variant="primary" size="sm" fullWidth onClick={onApply}>Apply</Button>
-      </div>
+      {!hideCta && (
+        <div className="pt-4 flex gap-2">
+          <Button variant="ghost" size="sm" fullWidth onClick={onReset}>Clear</Button>
+          <Button variant="primary" size="sm" fullWidth onClick={onApply}>Apply</Button>
+        </div>
+      )}
     </div>
   );
 }

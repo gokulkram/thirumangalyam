@@ -25,9 +25,12 @@ export default function ShortlistPage() {
       const mapped: MatchCard[] = (data.shortlist ?? []).map((item: any) => {
         const photos = item.profile?.photos || [];
         const primaryPhoto = photos.find((ph: any) => ph.isPrimary) || photos[0];
+        // Use the User ID as profileId — the profile page resolves both User ID and Profile ID
+        const userId = item.shortlistedUserId?.toString() || "";
         return {
-          id: item._id,
-          profileId: item.shortlistedUserId,
+          id: item._id?.toString() || "",
+          profileId: userId,
+          userId,
           fullName: item.profile?.fullName ?? "",
           age: item.profile?.age ?? 0,
           height: item.profile?.height ?? "",
@@ -60,7 +63,7 @@ export default function ShortlistPage() {
       const res = await fetch("/api/shortlist", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shortlistedUserId: profile.profileId }),
+        body: JSON.stringify({ shortlistedUserId: profile.userId }),
       });
       if (!res.ok) throw new Error("Failed to remove from shortlist");
 

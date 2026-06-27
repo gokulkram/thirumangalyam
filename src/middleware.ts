@@ -38,8 +38,8 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // If logged in and visiting login/register, redirect to appropriate dashboard
-  if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
+  // If logged in and visiting login/register/home, redirect to appropriate dashboard
+  if (isLoggedIn && (pathname === "/" || pathname === "/login" || pathname === "/register")) {
     const isAdmin = (req.auth?.user as any)?.isAdmin;
     return NextResponse.redirect(new URL(isAdmin ? "/admin/dashboard" : "/dashboard", req.url));
   }
@@ -54,6 +54,7 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
+    "/",
     "/dashboard/:path*",
     "/profile/:path*",
     "/search/:path*",

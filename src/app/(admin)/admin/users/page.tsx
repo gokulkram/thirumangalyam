@@ -20,6 +20,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import {
   Badge,
@@ -31,7 +32,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
   Avatar,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from "@/components/ui";
+import { exportToCSV } from "@/lib/export-csv";
 import {
   Table,
   TableHeader,
@@ -82,6 +89,14 @@ function AdminUsersContent() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Reason dialog state
+  const [reasonDialog, setReasonDialog] = useState<{
+    action: "ban" | "suspend";
+    targets: string[];
+    isBulk: boolean;
+  } | null>(null);
+  const [reasonText, setReasonText] = useState("");
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [planFilter, setPlanFilter] = useState<string>(initialPlan);
@@ -115,6 +130,11 @@ function AdminUsersContent() {
   }, [fetchUsers]);
 
   async function handleUserAction(userId: string, action: "ban" | "suspend" | "activate") {
+    if (action === "ban" || action === "suspend") {
+      setReasonText("");
+      setReasonDialog({ action, targets: [userId], isBulk: false });
+      return;
+    }
     try {
       setActionLoading(userId);
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -131,25 +151,78 @@ function AdminUsersContent() {
     }
   }
 
-  async function handleBulkAction(action: "ban" | "suspend") {
+  async function handleBulkAction(action: "ban" | "suspend" | "activate") {
+    if (action === "activate") {
+      try {
+        setActionLoading("bulk");
+        await Promise.all(
+          Array.from(selectedUsers).map((id) =>
+            fetch(`/api/admin/users/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action }),
+            })
+          )
+        );
+        setSelectedUsers(new Set());
+        await fetchUsers();
+      } catch (err: any) {
+        setActionError(err.message || `Failed to activate users`);
+      } finally {
+        setActionLoading(null);
+      }
+      return;
+    }
+    setReasonText("");
+    setReasonDialog({ action, targets: Array.from(selectedUsers), isBulk: true });
+  }
+
+  async function confirmReasonAction() {
+    if (!reasonDialog) return;
+    const { action, targets, isBulk } = reasonDialog;
+    setReasonDialog(null);
     try {
-      setActionLoading("bulk");
+      setActionLoading(isBulk ? "bulk" : targets[0]);
       await Promise.all(
-        Array.from(selectedUsers).map((id) =>
+        targets.map((id) =>
           fetch(`/api/admin/users/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action }),
+            body: JSON.stringify({ action, reason: reasonText.trim() || undefined }),
           })
         )
       );
-      setSelectedUsers(new Set());
+      if (isBulk) setSelectedUsers(new Set());
       await fetchUsers();
     } catch (err: any) {
-      setActionError(err.message || `Failed to ${action} users`);
+      setActionError(err.message || `Failed to ${action} user(s)`);
     } finally {
       setActionLoading(null);
     }
+  }
+
+  function handleExportCSV() {
+    exportToCSV(
+      `users-${new Date().toISOString().slice(0, 10)}.csv`,
+      filtered.map((u) => ({
+        Name: u.fullName,
+        Email: u.email,
+        Phone: u.phone,
+        Gender: u.gender,
+        Age: u.age,
+        Community: u.community,
+        Location: u.location,
+        Plan: u.plan,
+        Status: u.status,
+        Verified: u.isVerified ? "Yes" : "No",
+        "Profile %": u.profileComplete,
+        "Profile Views": u.profileViews,
+        "Interests Sent": u.interestsSent,
+        "Interests Received": u.interestsReceived,
+        "Joined At": new Date(u.joinedAt).toLocaleDateString("en-IN"),
+        "Last Active": new Date(u.lastActive).toLocaleDateString("en-IN"),
+      }))
+    );
   }
 
   // Derived stats
@@ -278,6 +351,10 @@ function AdminUsersContent() {
             {users.length} total users — {filtered.length} shown
           </p>
         </div>
+        <Button variant="ghost" size="sm" onClick={handleExportCSV} disabled={filtered.length === 0}>
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
         <Button variant="ghost" size="sm" onClick={fetchUsers}>
           <RefreshCw className="h-4 w-4" />
           Refresh
@@ -470,7 +547,16 @@ function AdminUsersContent() {
           <span className="text-sm font-medium text-rose-700">
             {selectedUsers.size} selected
           </span>
-          <div className="flex gap-2 ml-auto">
+          <div className="flex flex-wrap gap-2 ml-auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={actionLoading === "bulk"}
+              onClick={() => handleBulkAction("activate")}
+            >
+              <PlayCircle className="h-4 w-4" />
+              Activate
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -489,11 +575,67 @@ function AdminUsersContent() {
               <Ban className="h-4 w-4" />
               Ban
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={actionLoading === "bulk"}
+              onClick={() => {
+                const rows = Array.from(selectedUsers).map((id) => users.find((u) => u.id === id)!).filter(Boolean);
+                exportToCSV(`selected-users.csv`, rows.map((u) => ({
+                  Name: u.fullName, Email: u.email, Status: u.status, Plan: u.plan,
+                })));
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setSelectedUsers(new Set())}>
               Cancel
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Reason Dialog */}
+      {reasonDialog && (
+        <Dialog open onOpenChange={() => setReasonDialog(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {reasonDialog.action === "ban" ? "Ban" : "Suspend"}{" "}
+                {reasonDialog.isBulk ? `${reasonDialog.targets.length} users` : "User"}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-neutral-600">
+                Optionally provide a reason. This will be recorded in the activity log.
+              </p>
+              <textarea
+                value={reasonText}
+                onChange={(e) => setReasonText(e.target.value)}
+                placeholder="Reason (optional)..."
+                rows={3}
+                className="w-full rounded-[var(--radius-md)] border border-neutral-300 px-3 py-2 text-sm focus:border-rose-500 focus:ring-2 focus:ring-rose-100 focus:outline-none resize-none"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" size="sm" onClick={() => setReasonDialog(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={reasonDialog.action === "ban" ? "destructive" : "ghost"}
+                size="sm"
+                onClick={confirmReasonAction}
+              >
+                {reasonDialog.action === "ban" ? (
+                  <><Ban className="h-4 w-4" /> Confirm Ban</>
+                ) : (
+                  <><PauseCircle className="h-4 w-4" /> Confirm Suspend</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Table */}

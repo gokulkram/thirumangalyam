@@ -37,6 +37,19 @@ export function InterestCard({
   const StatusIcon = statusConfig.icon;
   const isNew = type === "received" && status === "pending";
 
+  // Profile may be null if the other user's account was deleted
+  if (!profile) {
+    return (
+      <div className="flex items-center gap-4 rounded-[var(--radius-lg)] border border-neutral-200 bg-neutral-50 p-4 opacity-60">
+        <Avatar src="" name="?" size="lg" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-neutral-500">Profile no longer available</p>
+          <p className="text-xs text-neutral-400">{formatDate(new Date(sentAt))}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(

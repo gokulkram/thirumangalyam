@@ -10,6 +10,11 @@ import {
   CreditCard,
   Settings,
   Network,
+  ClipboardList,
+  Mail,
+  ScanSearch,
+  Tag,
+  LifeBuoy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAdminStore } from "@/store/admin-store";
@@ -28,6 +33,11 @@ export function AdminSidebar() {
     { href: "/admin/reports", label: t.admin.reports, icon: Flag, badgeKey: "openReports" as const },
     { href: "/admin/subscriptions", label: t.admin.subscriptions, icon: CreditCard },
     { href: "/admin/communities", label: "Communities", icon: Network },
+    { href: "/admin/activity-log", label: "Activity Log", icon: ClipboardList },
+    { href: "/admin/email-campaigns", label: "Email Campaigns", icon: Mail },
+    { href: "/admin/duplicate-detection", label: "Duplicates", icon: ScanSearch },
+    { href: "/admin/promo-codes", label: "Promo Codes", icon: Tag },
+    { href: "/admin/support", label: "Support Tickets", icon: LifeBuoy, badgeKey: "openTickets" as const },
     { href: "/admin/settings", label: t.admin.settings, icon: Settings },
   ];
 

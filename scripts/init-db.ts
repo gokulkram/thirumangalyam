@@ -1,11 +1,12 @@
+import "./load-env";
 import mongoose, { Schema } from "mongoose";
 
-const MONGODB_URI =
-  "mongodb+srv://thirumangalyam:QA6FQv80xRG0Zh83@cluster0.t1qnu90.mongodb.net/thirumangalyam?appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) throw new Error("MONGODB_URI environment variable is not set");
 
 async function initDatabase() {
   console.log("Connecting to MongoDB Atlas...");
-  await mongoose.connect(MONGODB_URI);
+  await mongoose.connect(MONGODB_URI!);
   console.log("Connected successfully!\n");
 
   const db = mongoose.connection.db!;

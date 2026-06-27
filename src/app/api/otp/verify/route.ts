@@ -3,6 +3,7 @@ import { verifyStoredOTP } from "@/lib/otp-service";
 import { connectDB } from "@/lib/db/connection";
 import { User, Profile, ActivityLog } from "@/lib/db/models";
 import { notifyAdminNewRegistration, notifyAdminLogin } from "@/lib/mailer";
+import { notifyWelcome } from "@/lib/notifications/service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
         userName: userData.fullName || "",
       });
 
-      // Send admin email notification (non-blocking)
+      // Notify admin (non-blocking)
       notifyAdminNewRegistration({
         fullName: userData.fullName || "",
         phone: `+${mobile}`,
@@ -80,6 +81,14 @@ export async function POST(req: NextRequest) {
         gender: userData.gender || "male",
         community: userData.community || "",
         subCommunity: userData.subCommunity || "",
+      }).catch(() => {});
+
+      // Welcome email + SMS to new user (non-blocking)
+      notifyWelcome({
+        userId: user._id.toString(),
+        fullName: userData.fullName || "",
+        email: userData.email || "",
+        phone: `+${mobile}`,
       }).catch(() => {});
 
       return NextResponse.json({

@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Shield,
   CheckCircle,
@@ -10,12 +12,46 @@ import {
   UserPlus,
   Search,
   MessageSquare,
-  Sparkles
+  Sparkles,
+  LayoutDashboard,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useSession } from "next-auth/react";
 
 export default function LandingPage() {
   const { t } = useTranslation();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+
+  // Search form state
+  const [searchGender, setSearchGender] = useState("bride");
+  const [searchAge, setSearchAge] = useState("");
+  const [searchCommunity, setSearchCommunity] = useState("");
+  const [searchProfession, setSearchProfession] = useState("");
+  const [searchLocation, setSearchLocation] = useState("");
+  const [communities, setCommunities] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/communities")
+      .then((r) => r.json())
+      .then((d) => setCommunities(d.communities || []))
+      .catch(() => {});
+  }, []);
+
+  const handleSearch = () => {
+    const params = new URLSearchParams();
+    if (searchGender === "bride") params.set("gender", "female");
+    if (searchGender === "groom") params.set("gender", "male");
+    if (searchCommunity) params.set("community", searchCommunity);
+    if (searchProfession) params.set("occupation", searchProfession);
+    if (searchLocation) params.set("city", searchLocation);
+    if (searchAge) {
+      const [min, max] = searchAge.split("-");
+      if (min) params.set("ageMin", min.trim());
+      if (max) params.set("ageMax", max.trim());
+    }
+    router.push(`/search?${params.toString()}`);
+  };
 
   const TRUST_STATS = [
     { icon: Shield, label: t.trustStats.photosVerified, value: "100%" },
@@ -57,21 +93,38 @@ export default function LandingPage() {
             </p>
 
             <div className="flex gap-4 mt-8 flex-wrap">
-
-              <Link
-                href="/register"
-                className="bg-[#b40000] hover:bg-[#8f0000] px-7 py-3 rounded-full font-semibold shadow-lg"
-              >
-                {t.common.registerFree}
-              </Link>
-
-              <Link
-                href="/search"
-                className="bg-white text-black px-7 py-3 rounded-full font-semibold shadow-lg"
-              >
-                {t.landing.browseProfiles}
-              </Link>
-
+              {status === "authenticated" ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-2 bg-[#b40000] hover:bg-[#8f0000] px-7 py-3 rounded-full font-semibold shadow-lg"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    My Dashboard
+                  </Link>
+                  <Link
+                    href="/search"
+                    className="bg-white text-black px-7 py-3 rounded-full font-semibold shadow-lg"
+                  >
+                    {t.landing.browseProfiles}
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/register"
+                    className="bg-[#b40000] hover:bg-[#8f0000] px-7 py-3 rounded-full font-semibold shadow-lg"
+                  >
+                    {t.common.registerFree}
+                  </Link>
+                  <Link
+                    href="/search"
+                    className="bg-white text-black px-7 py-3 rounded-full font-semibold shadow-lg"
+                  >
+                    {t.landing.browseProfiles}
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* TRUST STATS */}
@@ -187,69 +240,111 @@ export default function LandingPage() {
 
 
           {/* Search Box */}
-          <div className="bg-white rounded-2xl shadow-xl p-8">
+          <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
 
-            <div className="grid md:grid-cols-5 gap-6 items-end">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
 
               {/* Looking For */}
               <div>
-                <label className="text-gray-700 text-sm font-medium">
+                <label className="text-gray-700 text-sm font-medium block mb-2">
                   {t.landing.lookingFor}
                 </label>
-
-                <select className="w-full mt-2 border border-gray-300 bg-white text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-red-300">
-                  <option>{t.landing.bride}</option>
-                  <option>{t.landing.groom}</option>
+                <select
+                  value={searchGender}
+                  onChange={(e) => setSearchGender(e.target.value)}
+                  className="w-full border border-gray-300 bg-white text-gray-800 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  <option value="bride">{t.landing.bride}</option>
+                  <option value="groom">{t.landing.groom}</option>
                 </select>
               </div>
 
               {/* Age */}
               <div>
-                <label className="text-gray-700 text-sm font-medium">
+                <label className="text-gray-700 text-sm font-medium block mb-2">
                   {t.landing.age}
                 </label>
+                <select
+                  value={searchAge}
+                  onChange={(e) => setSearchAge(e.target.value)}
+                  className="w-full border border-gray-300 bg-white text-gray-800 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  <option value="">Any Age</option>
+                  <option value="18-25">18 – 25</option>
+                  <option value="25-30">25 – 30</option>
+                  <option value="30-35">30 – 35</option>
+                  <option value="35-45">35 – 45</option>
+                </select>
+              </div>
 
-                <select className="w-full mt-2 border border-gray-300 bg-white text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-red-300">
-                  <option>18 - 25</option>
-                  <option>25 - 30</option>
-                  <option>30 - 35</option>
+              {/* Community */}
+              <div>
+                <label className="text-gray-700 text-sm font-medium block mb-2">
+                  Community
+                </label>
+                <select
+                  value={searchCommunity}
+                  onChange={(e) => setSearchCommunity(e.target.value)}
+                  className="w-full border border-gray-300 bg-white text-gray-800 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  <option value="">All Communities</option>
+                  {communities.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
 
               {/* Profession */}
               <div>
-                <label className="text-gray-700 text-sm font-medium">
+                <label className="text-gray-700 text-sm font-medium block mb-2">
                   {t.landing.profession}
                 </label>
-
-                <select className="w-full mt-2 border border-gray-300 bg-white text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-red-300">
-                  <option>{t.landing.itProfessional}</option>
-                  <option>{t.landing.business}</option>
-                  <option>{t.landing.governmentJob}</option>
+                <select
+                  value={searchProfession}
+                  onChange={(e) => setSearchProfession(e.target.value)}
+                  className="w-full border border-gray-300 bg-white text-gray-800 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  <option value="">Any Profession</option>
+                  <option value="Software Professional">{t.landing.itProfessional}</option>
+                  <option value="Business/Entrepreneur">{t.landing.business}</option>
+                  <option value="Government Employee">{t.landing.governmentJob}</option>
+                  <option value="Doctor">Doctor</option>
+                  <option value="Teacher/Professor">Teacher / Professor</option>
                 </select>
               </div>
 
               {/* Location */}
               <div>
-                <label className="text-gray-700 text-sm font-medium">
+                <label className="text-gray-700 text-sm font-medium block mb-2">
                   {t.landing.location}
                 </label>
-
-                <select className="w-full mt-2 border border-gray-300 bg-white text-gray-800 rounded-lg px-4 py-3 focus:ring-2 focus:ring-red-300">
-                  <option>Coimbatore</option>
-                  <option>Erode</option>
-                  <option>Salem</option>
+                <select
+                  value={searchLocation}
+                  onChange={(e) => setSearchLocation(e.target.value)}
+                  className="w-full border border-gray-300 bg-white text-gray-800 rounded-lg px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                >
+                  <option value="">Any Location</option>
+                  <option value="Chennai">Chennai</option>
+                  <option value="Coimbatore">Coimbatore</option>
+                  <option value="Madurai">Madurai</option>
+                  <option value="Bangalore">Bangalore</option>
+                  <option value="Hyderabad">Hyderabad</option>
+                  <option value="Kochi">Kochi</option>
+                  <option value="Trichy">Trichy</option>
+                  <option value="Salem">Salem</option>
+                  <option value="Erode">Erode</option>
                 </select>
               </div>
 
               {/* Button */}
               <div>
-                <Link
-                  href="/search"
-                  className="block w-full bg-[#b40000] hover:bg-[#8f0000] text-white font-semibold py-3 rounded-lg shadow-md text-center"
+                <button
+                  onClick={handleSearch}
+                  className="w-full bg-[#b40000] hover:bg-[#8f0000] text-white font-semibold py-3 rounded-lg shadow-md text-sm transition-colors flex items-center justify-center gap-2"
                 >
+                  <Search className="h-4 w-4" />
                   {t.common.search}
-                </Link>
+                </button>
               </div>
 
             </div>
@@ -434,7 +529,7 @@ export default function LandingPage() {
                     src={profile.img}
                     alt={profile.name}
                     fill
-                    className="object-cover"
+                    className="object-cover object-top"
                   />
 
                 </div>
@@ -568,7 +663,7 @@ export default function LandingPage() {
                     src={profile.img}
                     alt={profile.name}
                     fill
-                    className="object-cover"
+                    className="object-cover object-top"
                   />
                 </div>
 
@@ -680,7 +775,7 @@ export default function LandingPage() {
                     src={item.img}
                     alt={item.name}
                     fill
-                    className="object-cover"
+                    className="object-cover object-top"
                   />
                 </div>
 

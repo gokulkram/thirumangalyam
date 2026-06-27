@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button, Card, Badge, Progress, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Checkbox } from "@/components/ui";
 import { Textarea } from "@/components/ui";
 import { VerifiedBadge, PhotoUploadZone } from "@/components/domain";
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, Loader2, FileText, Upload, Trash2, ExternalLink, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import {
   MOTHER_TONGUES,
@@ -42,6 +43,7 @@ import {
 
 export default function MyProfilePage() {
   const { t } = useTranslation();
+  const { update: updateSession } = useSession();
   const [saved, setSaved] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,21 @@ export default function MyProfilePage() {
 
   // Photos
   const [photos, setPhotos] = useState<{ id: string; preview: string; isPrimary: boolean }[]>([]);
-  const [verificationStatus, setVerificationStatus] = useState("unverified");
+  const [verificationStatus, setVerificationStatus] = useState<"unverified"|"pending"|"verified"|"rejected">("unverified");
+  const [verificationRejectionReason, setVerificationRejectionReason] = useState("");
+  const [verDocType, setVerDocType] = useState("aadhaar");
+  const [verDocFile, setVerDocFile] = useState<File | null>(null);
+  const [verSelfieFile, setVerSelfieFile] = useState<File | null>(null);
+  const [verUploading, setVerUploading] = useState(false);
+  const [horoscopeUrl, setHoroscopeUrl] = useState("");
+  const [horoscopeUploading, setHoroscopeUploading] = useState(false);
+
+  const DOC_TYPE_OPTIONS = [
+    { value: "aadhaar",          label: "Aadhaar Card" },
+    { value: "passport",         label: "Passport" },
+    { value: "voter_id",         label: "Voter ID" },
+    { value: "driving_license",  label: "Driving License" },
+  ];
 
   // Dynamic communities from DB
   const [dbCommunities, setDbCommunities] = useState<string[]>([]);
@@ -199,7 +215,20 @@ export default function MyProfilePage() {
             isPrimary: ph.isPrimary || false,
           })));
         }
-        setVerificationStatus(p.verificationStatus || "unverified");
+        const vs = p.verificationStatus || "unverified";
+        setVerificationStatus(vs as any);
+        setHoroscopeUrl(p.horoscopeUrl || "");
+
+        // Load rejection reason if status is rejected
+        if (vs === "rejected") {
+          fetch("/api/admin/verifications?myStatus=true")
+            .then(r => r.json())
+            .then(d => {
+              const rejected = (d.verifications || []).find((v: any) => v.status === "rejected");
+              if (rejected?.rejectionReason) setVerificationRejectionReason(rejected.rejectionReason);
+            })
+            .catch(() => {});
+        }
 
         // Partner Preferences
         if (pp.ageRange) {
@@ -314,7 +343,10 @@ export default function MyProfilePage() {
 
       if (res.ok) {
         const data = await res.json();
-        setProfileComplete(data.profileComplete || profileComplete);
+        const newComplete = data.profileComplete ?? profileComplete;
+        setProfileComplete(newComplete);
+        // Push the updated value into the JWT so the dashboard + sidebar stay in sync
+        updateSession({ profileComplete: newComplete }).catch(() => {});
         setSaved(section);
         setTimeout(() => setSaved(null), 2000);
       } else {
@@ -405,7 +437,7 @@ export default function MyProfilePage() {
       setPhotos(updated);
 
       // Save to profile
-      await fetch("/api/profiles/me", {
+      const saveRes = await fetch("/api/profiles/me", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -416,10 +448,16 @@ export default function MyProfilePage() {
           })),
         }),
       });
+      if (saveRes.ok) {
+        const saveData = await saveRes.json();
+        const newComplete = saveData.profileComplete ?? profileComplete;
+        setProfileComplete(newComplete);
+        updateSession({ profileComplete: newComplete }).catch(() => {});
+      }
     } catch (err) {
       console.error("Photo upload failed:", err);
     }
-  }, [photos]);
+  }, [photos, profileComplete, updateSession]);
 
   const handleRemovePhoto = useCallback(async (id: string) => {
     const updated = photos.filter((p) => p.id !== id);
@@ -459,6 +497,49 @@ export default function MyProfilePage() {
     });
   }, [photos]);
 
+  const handleVerificationSubmit = useCallback(async () => {
+    if (!verDocFile) return;
+    setVerUploading(true);
+    try {
+      // Upload document
+      const docForm = new FormData();
+      docForm.append("files", verDocFile);
+      const docRes = await fetch("/api/upload", { method: "POST", body: docForm });
+      if (!docRes.ok) throw new Error("Document upload failed");
+      const docData = await docRes.json();
+      const documentUrl = docData.files?.[0]?.url;
+      if (!documentUrl) throw new Error("No URL returned");
+
+      // Upload selfie if provided
+      let selfieUrl = "";
+      if (verSelfieFile) {
+        const selfieForm = new FormData();
+        selfieForm.append("files", verSelfieFile);
+        const selfieRes = await fetch("/api/upload", { method: "POST", body: selfieForm });
+        if (selfieRes.ok) {
+          const selfieData = await selfieRes.json();
+          selfieUrl = selfieData.files?.[0]?.url || "";
+        }
+      }
+
+      const submitRes = await fetch("/api/admin/verifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentType: verDocType, documentUrl, selfieUrl }),
+      });
+      if (!submitRes.ok) throw new Error("Submission failed");
+
+      setVerificationStatus("pending");
+      setVerificationRejectionReason("");
+      setVerDocFile(null);
+      setVerSelfieFile(null);
+    } catch (err) {
+      console.error("Verification submit error:", err);
+    } finally {
+      setVerUploading(false);
+    }
+  }, [verDocFile, verSelfieFile, verDocType]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -489,9 +570,31 @@ export default function MyProfilePage() {
             <Progress value={profileComplete} showPercentage size="md" className="mt-3 max-w-xs" />
           </div>
           <div className="flex flex-col gap-1 text-sm">
-            {profileComplete < 100 && (
-              <span className="text-error font-medium">{t.profile.missing}: {t.profile.horoscope}, {t.profile.idVerification}</span>
-            )}
+            {profileComplete < 100 && (() => {
+              // Compute which required fields are actually missing
+              const missing: string[] = [];
+              if (!fullName.trim())        missing.push(t.profile.fullName);
+              if (!dateOfBirth)            missing.push(t.profile.dateOfBirth);
+              if (!height)                 missing.push(t.profile.height);
+              if (!motherTongue)           missing.push(t.profile.motherTongue);
+              if (!community)              missing.push("Community");
+              if (!maritalStatus || maritalStatus === "") missing.push(t.profile.maritalStatus);
+              if (!highestDegree)          missing.push(t.profile.highestDegree);
+              if (!occupation)             missing.push(t.profile.occupationLabel);
+              if (!city)                   missing.push("City");
+              if (!aboutMe.trim())         missing.push(t.profile.aboutMe);
+              if (photos.length === 0)     missing.push(t.profile.photos);
+              // Only show horoscope/verification as missing if genuinely not done
+              if (!horoscopeUrl)           missing.push(t.profile.horoscope);
+              if (verificationStatus !== "verified" && verificationStatus !== "pending")
+                missing.push(t.profile.idVerification);
+
+              return missing.length > 0 ? (
+                <span className="text-error font-medium">
+                  {t.profile.missing}: {missing.join(", ")}
+                </span>
+              ) : null;
+            })()}
           </div>
         </div>
       </Card>
@@ -499,12 +602,30 @@ export default function MyProfilePage() {
       {/* Profile sections */}
       <Tabs defaultValue="basic">
         <TabsList>
-          <TabsTrigger value="photos">{t.profile.photos}</TabsTrigger>
-          <TabsTrigger value="basic">{t.profile.basicInfo}</TabsTrigger>
-          <TabsTrigger value="family">{t.profile.family}</TabsTrigger>
-          <TabsTrigger value="career">{t.profile.career}</TabsTrigger>
-          <TabsTrigger value="about">{t.profile.about}</TabsTrigger>
-          <TabsTrigger value="preferences">{t.profile.partnerPrefs}</TabsTrigger>
+          <TabsTrigger value="photos">
+            <span className="sm:hidden">Photos</span>
+            <span className="hidden sm:inline">{t.profile.photos}</span>
+          </TabsTrigger>
+          <TabsTrigger value="basic">
+            <span className="sm:hidden">Basic</span>
+            <span className="hidden sm:inline">{t.profile.basicInfo}</span>
+          </TabsTrigger>
+          <TabsTrigger value="family">
+            <span className="sm:hidden">Family</span>
+            <span className="hidden sm:inline">{t.profile.family}</span>
+          </TabsTrigger>
+          <TabsTrigger value="career">
+            <span className="sm:hidden">Career</span>
+            <span className="hidden sm:inline">{t.profile.career}</span>
+          </TabsTrigger>
+          <TabsTrigger value="about">
+            <span className="sm:hidden">About</span>
+            <span className="hidden sm:inline">{t.profile.about}</span>
+          </TabsTrigger>
+          <TabsTrigger value="preferences">
+            <span className="sm:hidden">Prefs</span>
+            <span className="hidden sm:inline">{t.profile.partnerPrefs}</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ─── Photos ─── */}
@@ -524,6 +645,199 @@ export default function MyProfilePage() {
               onSetPrimary={handleSetPrimary}
             />
           </Card>
+
+          {/* Horoscope file upload */}
+          <Card variant="flat" padding="lg" className="mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText className="h-5 w-5 text-primary-600" />
+              <h3 className="text-base font-semibold text-neutral-900">Horoscope / Jathagam</h3>
+            </div>
+            <p className="text-sm text-neutral-500 mb-4">Upload your horoscope document (PDF, JPG, or PNG). This is shared only with your accepted matches.</p>
+            {horoscopeUrl ? (
+              <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-neutral-200 bg-neutral-50 px-4 py-3">
+                <FileText className="h-5 w-5 text-primary-500 shrink-0" />
+                <span className="flex-1 text-sm text-neutral-700 truncate">Horoscope uploaded</span>
+                <a href={horoscopeUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-neutral-500 hover:text-primary-600 transition-colors">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                <button
+                  onClick={async () => {
+                    setHoroscopeUrl("");
+                    await fetch("/api/profiles/me", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ horoscopeUrl: "" }),
+                    });
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-lg)] border-2 border-dashed border-neutral-300 bg-neutral-50 p-6 cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-colors">
+                {horoscopeUploading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+                ) : (
+                  <Upload className="h-6 w-6 text-neutral-400" />
+                )}
+                <span className="text-sm font-medium text-neutral-600">
+                  {horoscopeUploading ? "Uploading..." : "Click to upload horoscope"}
+                </span>
+                <span className="text-xs text-neutral-400">PDF, JPG or PNG · max 5 MB</span>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="sr-only"
+                  disabled={horoscopeUploading}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) { alert("File must be under 5 MB"); return; }
+                    setHoroscopeUploading(true);
+                    try {
+                      const form = new FormData();
+                      form.append("files", file);
+                      const res = await fetch("/api/upload", { method: "POST", body: form });
+                      if (!res.ok) throw new Error("Upload failed");
+                      const data = await res.json();
+                      const url = data.files?.[0]?.url;
+                      if (!url) throw new Error("No URL returned");
+                      setHoroscopeUrl(url);
+                      await fetch("/api/profiles/me", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ horoscopeUrl: url }),
+                      });
+                    } catch (err) {
+                      console.error("Horoscope upload failed:", err);
+                    } finally {
+                      setHoroscopeUploading(false);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+              </label>
+            )}
+          </Card>
+          {/* ID Verification card */}
+          <Card variant="flat" padding="lg" className="mt-4" id="verification">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary-600" />
+                <h3 className="text-base font-semibold text-neutral-900">ID Verification</h3>
+              </div>
+              <VerifiedBadge status={verificationStatus as any} />
+            </div>
+
+            {/* Verified */}
+            {verificationStatus === "verified" && (
+              <p className="text-sm text-green-700 font-medium flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                Your identity is verified. Your profile shows the Verified badge.
+              </p>
+            )}
+
+            {/* Pending */}
+            {verificationStatus === "pending" && (
+              <p className="text-sm text-amber-700">
+                ⏳ Your document is under review. We'll notify you within 24 hours.
+              </p>
+            )}
+
+            {/* Rejected */}
+            {verificationStatus === "rejected" && (
+              <div className="rounded-[var(--radius-md)] bg-red-50 border border-red-200 p-3 mb-3">
+                <p className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
+                  <ShieldAlert className="h-4 w-4" /> Verification rejected
+                </p>
+                {verificationRejectionReason && (
+                  <p className="text-xs text-red-600 mt-1">{verificationRejectionReason}</p>
+                )}
+                <p className="text-xs text-red-500 mt-1">Please re-submit a clearer document below.</p>
+              </div>
+            )}
+
+            {/* Unverified info */}
+            {verificationStatus === "unverified" && (
+              <p className="text-sm text-neutral-500 mb-3">
+                Verified profiles get <strong>40% more responses</strong> and rank higher in search.
+                Upload a government-issued ID to get verified.
+              </p>
+            )}
+
+            {/* Upload form — shown for unverified or rejected */}
+            {(verificationStatus === "unverified" || verificationStatus === "rejected") && (
+              <div className="space-y-3 mt-3">
+                {/* Document type */}
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Document Type</label>
+                  <select
+                    value={verDocType}
+                    onChange={(e) => setVerDocType(e.target.value)}
+                    className="w-full rounded-[var(--radius-md)] border border-neutral-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-300"
+                  >
+                    {DOC_TYPE_OPTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Document file */}
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">
+                    Upload ID Document <span className="text-neutral-400">(Image or PDF)</span>
+                  </label>
+                  <label className="flex items-center gap-3 rounded-[var(--radius-md)] border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-3 cursor-pointer hover:border-primary-400 hover:bg-primary-50/30 transition-colors">
+                    <FileText className="h-5 w-5 text-neutral-400 shrink-0" />
+                    <span className="text-sm text-neutral-600 truncate">
+                      {verDocFile ? verDocFile.name : "Click to choose file"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setVerDocFile(f); }}
+                    />
+                  </label>
+                </div>
+
+                {/* Selfie file (optional) */}
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">
+                    Selfie with ID <span className="text-neutral-400">(Optional — increases approval rate)</span>
+                  </label>
+                  <label className="flex items-center gap-3 rounded-[var(--radius-md)] border-2 border-dashed border-neutral-200 bg-neutral-50 px-4 py-3 cursor-pointer hover:border-primary-300 hover:bg-primary-50/20 transition-colors">
+                    <Eye className="h-5 w-5 text-neutral-400 shrink-0" />
+                    <span className="text-sm text-neutral-500 truncate">
+                      {verSelfieFile ? verSelfieFile.name : "Click to add selfie"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) setVerSelfieFile(f); }}
+                    />
+                  </label>
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  disabled={!verDocFile || verUploading}
+                  onClick={handleVerificationSubmit}
+                >
+                  {verUploading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
+                  ) : (
+                    <><ShieldCheck className="h-4 w-4" /> Submit for Verification</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </Card>
+
         </TabsContent>
 
         {/* ─── Basic Info ─── */}

@@ -62,7 +62,12 @@ export default function RegisterPage() {
       setError("Please enter your full name");
       return;
     }
-    if (community && community !== "no_community" && !subCommunity) {
+    if (
+      community &&
+      community !== "no_community" &&
+      subCommunityMap[community]?.length > 0 &&
+      !subCommunity
+    ) {
       setError("Please select a Sub-Community");
       return;
     }
@@ -211,8 +216,8 @@ export default function RegisterPage() {
     : "";
 
   return (
-    <div className="w-full max-w-[520px]">
-      <div className="rounded-[var(--radius-xl)] border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="w-full sm:max-w-[520px]">
+      <div className="bg-white px-5 py-7 sm:rounded-[var(--radius-xl)] sm:border sm:border-neutral-200 sm:p-8 sm:shadow-sm">
         {step === "form" ? (
           <>
             <h1 className="text-2xl font-bold text-neutral-900">{t.auth.registerTitle}</h1>
@@ -250,9 +255,11 @@ export default function RegisterPage() {
               <Input
                 label={t.auth.phoneLabel}
                 type="tel"
+                inputMode="numeric"
                 placeholder="98765 43210"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
               />
               <p className="text-center text-xs text-neutral-400">{t.common.or}</p>
               <Input
@@ -319,19 +326,8 @@ export default function RegisterPage() {
               )}
             </Button>
 
-            <div className="mt-6 flex items-center gap-4">
-              <div className="flex-1 border-t border-neutral-200" />
-              <span className="text-xs text-neutral-400">or register with</span>
-              <div className="flex-1 border-t border-neutral-200" />
-            </div>
-
-            <div className="mt-4 flex gap-3">
-              <Button variant="ghost" fullWidth size="md">Google</Button>
-              <Button variant="ghost" fullWidth size="md">Apple</Button>
-            </div>
-
             <p className="mt-6 text-center text-sm text-neutral-500">
-              {t.auth.noAccount}{" "}
+              Already have an account?{" "}
               <Link href="/login" className="font-medium text-primary-600 hover:underline">
                 {t.auth.loginButton}
               </Link>
@@ -345,11 +341,11 @@ export default function RegisterPage() {
             </p>
 
             {demoOtp && (
-              <div className="mt-4 flex items-center justify-between rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3">
                 <div>
                   <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Demo Mode — No SMS sent</p>
                   <p className="text-sm text-amber-800 mt-0.5">
-                    Your OTP is: <span className="font-mono font-bold text-lg tracking-widest">{demoOtp}</span>
+                    OTP: <span className="font-mono font-bold text-xl tracking-[0.3em]">{demoOtp}</span>
                   </p>
                 </div>
                 <button
@@ -359,14 +355,14 @@ export default function RegisterPage() {
                     setOtp(digits);
                     inputRefs.current[5]?.focus();
                   }}
-                  className="ml-3 rounded-[var(--radius-md)] bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                  className="self-start sm:self-center rounded-[var(--radius-md)] bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
                 >
                   Auto-fill
                 </button>
               </div>
             )}
 
-            <div className="mt-6 flex justify-center gap-3" onPaste={handleOtpPaste}>
+            <div className="mt-6 flex justify-center gap-2 sm:gap-3" onPaste={handleOtpPaste}>
               {otp.map((digit, i) => (
                 <input
                   key={i}
@@ -377,7 +373,7 @@ export default function RegisterPage() {
                   value={digit}
                   onChange={(e) => handleOtpChange(i, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  className="h-12 w-12 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-xl font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
+                  className="h-11 w-11 sm:h-12 sm:w-12 rounded-[var(--radius-md)] border-[1.5px] border-neutral-300 bg-white text-center text-lg sm:text-xl font-bold text-neutral-800 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
                   aria-label={`Digit ${i + 1}`}
                 />
               ))}

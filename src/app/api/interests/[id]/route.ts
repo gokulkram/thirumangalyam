@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { connectDB } from "@/lib/db/connection";
-import { Interest, Conversation } from "@/lib/db/models";
+import { Interest, Conversation, Profile } from "@/lib/db/models";
+import { notifyInterestAccepted } from "@/lib/notifications/service";
 
 export async function PATCH(
   request: NextRequest,
@@ -29,7 +30,6 @@ export async function PATCH(
     }
 
     if (action === "accept") {
-      // Only the recipient can accept
       if (interest.toUserId.toString() !== userId) {
         return NextResponse.json({ error: "Only the recipient can accept" }, { status: 403 });
       }
@@ -42,18 +42,26 @@ export async function PATCH(
       await interest.save();
 
       // Create conversation if one doesn't exist
-      const existingConversation = await Conversation.findOne({
+      let conversation = await Conversation.findOne({
         participants: { $all: [interest.fromUserId, interest.toUserId] },
       });
 
-      if (!existingConversation) {
-        await Conversation.create({
+      if (!conversation) {
+        conversation = await Conversation.create({
           participants: [interest.fromUserId, interest.toUserId],
           lastMessageAt: new Date(),
         });
       }
+
+      // Notify original sender — fire-and-forget
+      const acceptorProfile = await Profile.findOne({ userId }).select("fullName").lean();
+      notifyInterestAccepted({
+        toUserId: interest.fromUserId.toString(),
+        byProfileName: (acceptorProfile as any)?.fullName || "Someone",
+        conversationId: conversation._id.toString(),
+      }).catch(() => {});
+
     } else if (action === "decline") {
-      // Only the recipient can decline
       if (interest.toUserId.toString() !== userId) {
         return NextResponse.json({ error: "Only the recipient can decline" }, { status: 403 });
       }
@@ -64,8 +72,8 @@ export async function PATCH(
       interest.status = "declined";
       interest.respondedAt = new Date();
       await interest.save();
+
     } else if (action === "withdraw") {
-      // Only the sender can withdraw
       if (interest.fromUserId.toString() !== userId) {
         return NextResponse.json({ error: "Only the sender can withdraw" }, { status: 403 });
       }

@@ -137,6 +137,18 @@ export default function UserDetailPage() {
   const status = STATUS_BADGE[user.status] || STATUS_BADGE.inactive;
   const isPaid = user.plan !== "free";
 
+  const fmtDate = (val: any) => {
+    if (!val) return "—";
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  };
+
+  const fmtDateTime = (val: any) => {
+    if (!val) return "—";
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  };
+
   return (
     <div className="space-y-6">
       {/* Back link */}
@@ -177,20 +189,10 @@ export default function UserDetailPage() {
               <MapPin className="h-3.5 w-3.5" /> {user.location}
             </span>
             <span className="flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5" /> Joined{" "}
-              {new Date(user.joinedAt).toLocaleDateString("en-IN", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              <Calendar className="h-3.5 w-3.5" /> Joined {fmtDate(user.joinedAt)}
             </span>
             <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" /> Last active{" "}
-              {new Date(user.lastActive).toLocaleDateString("en-IN", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              <Clock className="h-3.5 w-3.5" /> Last active {fmtDate(user.lastActive)}
             </span>
             <span className="flex items-center gap-1.5">
               <Globe className="h-3.5 w-3.5" /> {user.lastLoginIp}
@@ -271,9 +273,9 @@ export default function UserDetailPage() {
               {[
                 { label: "Full Name", value: user.fullName },
                 { label: "Gender", value: user.gender === "male" ? "Male" : "Female" },
-                { label: "Age", value: `${user.age} years` },
-                { label: "Community", value: user.community },
-                { label: "Location", value: user.location },
+                { label: "Age", value: user.age != null ? `${user.age} years` : "—" },
+                { label: "Community", value: user.community || "—" },
+                { label: "Location", value: user.location || "—" },
                 { label: "Email", value: user.email },
                 { label: "Phone", value: user.phone },
               ].map(({ label, value }) => (
@@ -356,9 +358,7 @@ export default function UserDetailPage() {
                         </Badge>
                       </div>
                       <p className="text-xs text-neutral-500 mt-1">
-                        {new Date(sub.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                        {" — "}
-                        {new Date(sub.endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        {fmtDate(sub.startDate)} — {fmtDate(sub.endDate)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -417,13 +417,7 @@ export default function UserDetailPage() {
                           {report.reason.replace(/_/g, " ")}
                         </Badge>
                       </div>
-                      <span className="text-xs text-neutral-400">
-                        {new Date(report.createdAt).toLocaleDateString("en-IN", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
+                      <span className="text-xs text-neutral-400">{fmtDate(report.createdAt)}</span>
                     </div>
                     <p className="mt-1.5 text-sm text-neutral-700">
                       {report.description}
@@ -472,15 +466,7 @@ export default function UserDetailPage() {
                       )} />
                       <div className="flex-1 min-w-0 pb-1">
                         <p className="text-sm text-neutral-700">{entry.description}</p>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          {new Date(entry.timestamp).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                        <p className="text-xs text-neutral-400 mt-0.5">{fmtDateTime(entry.timestamp)}</p>
                       </div>
                       <Badge size="sm" variant="default">
                         {entry.action.replace(/_/g, " ")}
@@ -496,15 +482,11 @@ export default function UserDetailPage() {
               <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Key Dates</p>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Registered</span>
-                <span className="font-medium text-neutral-900">
-                  {new Date(user.joinedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
+                <span className="font-medium text-neutral-900">{fmtDate(user.joinedAt)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Last Active</span>
-                <span className="font-medium text-neutral-900">
-                  {new Date(user.lastActive).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
+                <span className="font-medium text-neutral-900">{fmtDate(user.lastActive)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-neutral-500">Last Login IP</span>

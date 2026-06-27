@@ -157,21 +157,40 @@ export default function HelpPage() {
               <Mail className="h-4 w-4" />
             </div>
             <span className="font-medium text-neutral-700">Email</span>
-            <span className="text-neutral-500">support@thirumangalyam.com</span>
+            <a
+              href="mailto:anandakumararasukkutty@gmail.com"
+              className="text-neutral-500 hover:text-primary-600 transition-colors break-all"
+            >
+              anandakumararasukkutty@gmail.com
+            </a>
           </div>
           <div className="flex flex-col items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 text-primary-600">
               <Phone className="h-4 w-4" />
             </div>
             <span className="font-medium text-neutral-700">Phone</span>
-            <span className="text-neutral-500">+91 44 2345 6789</span>
+            <div className="flex flex-col gap-0.5">
+              <a href="tel:+919566577300" className="text-neutral-500 hover:text-primary-600 transition-colors">
+                +91 95665 77300
+              </a>
+              <a href="tel:+919566877300" className="text-neutral-500 hover:text-primary-600 transition-colors">
+                +91 95668 77300
+              </a>
+            </div>
           </div>
           <div className="flex flex-col items-center gap-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-100 text-primary-600">
               <MessageCircle className="h-4 w-4" />
             </div>
             <span className="font-medium text-neutral-700">WhatsApp</span>
-            <span className="text-neutral-500">+91 98765 43210</span>
+            <a
+              href="https://wa.me/919566877300"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neutral-500 hover:text-primary-600 transition-colors"
+            >
+              +91 95668 77300
+            </a>
           </div>
         </div>
       </Card>

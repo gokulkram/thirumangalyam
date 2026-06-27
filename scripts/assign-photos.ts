@@ -3,11 +3,11 @@
  * Run with: npx tsx scripts/assign-photos.ts
  */
 
+import "./load-env";
 import mongoose from "mongoose";
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://thirumangalyam:QA6FQv80xRG0Zh83@cluster0.t1qnu90.mongodb.net/thirumangalyam?appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) throw new Error("MONGODB_URI environment variable is not set");
 
 const FEMALE_PHOTOS = [
   "/profiles/bride.jpg",
@@ -36,7 +36,7 @@ const MALE_PHOTOS = [
 
 async function main() {
   console.log("Connecting to MongoDB...");
-  await mongoose.connect(MONGODB_URI);
+  await mongoose.connect(MONGODB_URI!);
   console.log("Connected.");
 
   const db = mongoose.connection.db!;

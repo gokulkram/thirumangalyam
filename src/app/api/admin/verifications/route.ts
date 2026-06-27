@@ -94,6 +94,7 @@ export async function GET(request: NextRequest) {
       id: r._id.toString(),
       _id: undefined,
       userId: r.userId?.toString() || "",
+      submittedAt: r.createdAt,   // page expects submittedAt, DB has createdAt
     }));
 
     return NextResponse.json({

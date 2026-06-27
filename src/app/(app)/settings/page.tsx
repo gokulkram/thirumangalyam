@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Button, Input, Card, Switch, Tabs, TabsList, TabsTrigger, TabsContent, RadioGroup, Badge } from "@/components/ui";
-import { User, Shield, Bell, CreditCard, AlertTriangle, LogOut, Loader2, Crown, CheckCircle, Clock, Calendar, Receipt, Mail, KeyRound } from "lucide-react";
+import { User, Shield, Bell, CreditCard, AlertTriangle, LogOut, Loader2, Crown, CheckCircle, Clock, Calendar, Receipt, Mail, KeyRound, MonitorSmartphone, MapPin, ShieldAlert, MessageSquare, Phone, Info, Sparkles } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 
 const PLAN_LABELS: Record<string, string> = {
@@ -24,6 +24,39 @@ function fmt(date: string) {
   return new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function NotifRow({
+  label, desc, checked, onChange, badge, disabled = false,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  badge?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={`flex items-start justify-between gap-4 ${disabled ? "opacity-50" : ""}`}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-neutral-800">{label}</p>
+          {badge && (
+            <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
+              {badge}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-neutral-400 mt-0.5">{desc}</p>
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={disabled ? undefined : onChange}
+        disabled={disabled}
+        className="shrink-0 mt-0.5"
+      />
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -39,6 +72,27 @@ export default function SettingsPage() {
   const [inviteLink, setInviteLink] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+
+  // Privacy settings
+  const [privacy, setPrivacy] = useState({
+    profileVisibility: "all",
+    photoPrivacy: "all",
+    showContact: true,
+    showHoroscope: true,
+    showOnline: true,
+  });
+  const [privacyLoading, setPrivacyLoading] = useState(true);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const [privacySaved, setPrivacySaved] = useState(false);
+
+  // Notification prefs
+  const [notifPrefs, setNotifPrefs] = useState({
+    email: { newMatches: true, interestsReceived: true, interestAccepted: true, newMessages: true, profileViews: false, weeklyDigest: true },
+    push: { interests: true, messages: true, matchAlerts: true },
+  });
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
 
   // Account data from DB
   const [fullName, setFullName] = useState("");
@@ -62,6 +116,13 @@ export default function SettingsPage() {
   const [activeSub, setActiveSub] = useState<any>(null);
   const [subHistory, setSubHistory] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
+
+  // Security / sessions
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
+  const [logoutAllDone, setLogoutAllDone] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -102,8 +163,24 @@ export default function SettingsPage() {
       }
     }
 
+    async function fetchPrivacy() {
+      try {
+        const res = await fetch("/api/profiles/privacy");
+        if (res.ok) setPrivacy(await res.json());
+      } catch {} finally { setPrivacyLoading(false); }
+    }
+
+    async function fetchNotifs() {
+      try {
+        const res = await fetch("/api/profiles/notifications");
+        if (res.ok) setNotifPrefs(await res.json());
+      } catch {} finally { setNotifLoading(false); }
+    }
+
     fetchProfile();
     fetchSubscription();
+    fetchPrivacy();
+    fetchNotifs();
   }, []);
 
   useEffect(() => {
@@ -185,10 +262,40 @@ export default function SettingsPage() {
 
       <Tabs defaultValue="account">
         <TabsList>
-          <TabsTrigger value="account"><User className="h-4 w-4" /> {t.settings.accountTab}</TabsTrigger>
-          <TabsTrigger value="privacy"><Shield className="h-4 w-4" /> {t.settings.privacyTab}</TabsTrigger>
-          <TabsTrigger value="notifications"><Bell className="h-4 w-4" /> {t.settings.notificationsTab}</TabsTrigger>
-          <TabsTrigger value="subscription"><CreditCard className="h-4 w-4" /> {t.settings.subscriptionTab}</TabsTrigger>
+          <TabsTrigger value="account">
+            <User className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t.settings.accountTab}</span>
+            <span className="sm:hidden">Account</span>
+          </TabsTrigger>
+          <TabsTrigger value="privacy">
+            <Shield className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t.settings.privacyTab}</span>
+            <span className="sm:hidden">Privacy</span>
+          </TabsTrigger>
+          <TabsTrigger value="notifications">
+            <Bell className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t.settings.notificationsTab}</span>
+            <span className="sm:hidden">Alerts</span>
+          </TabsTrigger>
+          <TabsTrigger value="subscription">
+            <CreditCard className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t.settings.subscriptionTab}</span>
+            <span className="sm:hidden">Plan</span>
+          </TabsTrigger>
+          <TabsTrigger value="security" onClick={() => {
+            if (!sessionsLoaded) {
+              setSessionsLoading(true);
+              fetch("/api/security/sessions")
+                .then((r) => r.json())
+                .then((d) => { setSessions(d.sessions || []); setSessionsLoaded(true); })
+                .catch(() => {})
+                .finally(() => setSessionsLoading(false));
+            }
+          }}>
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">Security</span>
+            <span className="sm:hidden">Safety</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Account */}
@@ -222,7 +329,7 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-neutral-700 mb-1.5">
                 {t.settings.email}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   type="email"
                   value={email}
@@ -234,7 +341,7 @@ export default function SettingsPage() {
                     setEmailDemoOtp("");
                   }}
                   placeholder="your@email.com"
-                  className="flex-1 rounded-[var(--radius-md)] border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
+                  className="flex-1 min-w-0 rounded-[var(--radius-md)] border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-primary-500 focus:ring-[3px] focus:ring-primary-100 focus:outline-none"
                 />
                 {emailVerifyStep !== "verified" && (
                   <Button
@@ -480,43 +587,69 @@ export default function SettingsPage() {
         {/* Privacy */}
         <TabsContent value="privacy">
           <Card variant="flat" padding="lg" className="space-y-6">
-            <div className="rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-medium text-amber-800">Coming soon — Privacy settings are not yet active. Changes here will not be saved.</p>
-            </div>
-            <fieldset disabled className="space-y-6 opacity-60">
-            <RadioGroup
-              label={t.settings.profileVisibility}
-              options={[
-                { value: "all", label: t.settings.visibleAll },
-                { value: "premium", label: t.settings.visiblePremium },
-                { value: "hidden", label: t.settings.visibleHidden },
-              ]}
-              defaultValue="all"
-            />
-
-            <RadioGroup
-              label={t.settings.photoPrivacy}
-              options={[
-                { value: "all", label: t.settings.photoAll },
-                { value: "accepted", label: t.settings.photoAccepted },
-                { value: "protected", label: t.settings.photoProtected },
-              ]}
-              defaultValue="all"
-            />
-
-            <Switch
-              label={t.settings.showContact}
-              defaultChecked
-            />
-            <Switch
-              label={t.settings.showHoroscope}
-              defaultChecked
-            />
-            <Switch
-              label={t.settings.showOnline}
-              defaultChecked
-            />
-            </fieldset>
+            {privacyLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
+              </div>
+            ) : (
+              <>
+                <RadioGroup
+                  label={t.settings.profileVisibility}
+                  options={[
+                    { value: "all", label: t.settings.visibleAll },
+                    { value: "premium", label: t.settings.visiblePremium },
+                    { value: "hidden", label: t.settings.visibleHidden },
+                  ]}
+                  value={privacy.profileVisibility}
+                  onValueChange={(v) => setPrivacy((p) => ({ ...p, profileVisibility: v }))}
+                />
+                <RadioGroup
+                  label={t.settings.photoPrivacy}
+                  options={[
+                    { value: "all", label: t.settings.photoAll },
+                    { value: "accepted", label: t.settings.photoAccepted },
+                    { value: "protected", label: t.settings.photoProtected },
+                  ]}
+                  value={privacy.photoPrivacy}
+                  onValueChange={(v) => setPrivacy((p) => ({ ...p, photoPrivacy: v }))}
+                />
+                <Switch
+                  label={t.settings.showContact}
+                  checked={privacy.showContact}
+                  onCheckedChange={(v) => setPrivacy((p) => ({ ...p, showContact: v }))}
+                />
+                <Switch
+                  label={t.settings.showHoroscope}
+                  checked={privacy.showHoroscope}
+                  onCheckedChange={(v) => setPrivacy((p) => ({ ...p, showHoroscope: v }))}
+                />
+                <Switch
+                  label={t.settings.showOnline}
+                  checked={privacy.showOnline}
+                  onCheckedChange={(v) => setPrivacy((p) => ({ ...p, showOnline: v }))}
+                />
+                {privacySaved && <p className="text-sm text-success font-medium">Privacy settings saved!</p>}
+                <Button
+                  variant="primary"
+                  size="md"
+                  disabled={privacySaving}
+                  onClick={async () => {
+                    setPrivacySaving(true);
+                    try {
+                      await fetch("/api/profiles/privacy", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(privacy),
+                      });
+                      setPrivacySaved(true);
+                      setTimeout(() => setPrivacySaved(false), 2000);
+                    } finally { setPrivacySaving(false); }
+                  }}
+                >
+                  {privacySaving ? "Saving..." : t.common.save}
+                </Button>
+              </>
+            )}
 
             <div>
               <Button
@@ -588,29 +721,137 @@ export default function SettingsPage() {
 
         {/* Notifications */}
         <TabsContent value="notifications">
-          <div className="rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-4 py-3 mb-4">
-            <p className="text-sm font-medium text-amber-800">Coming soon — Notification preferences are not yet active. Changes here will not be saved.</p>
-          </div>
-          <Card variant="flat" padding="lg" className="space-y-2">
-            <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-4">{t.settings.emailNotifications}</h3>
-            <fieldset disabled className="space-y-2 opacity-60">
-            <Switch label={t.settings.newMatches} defaultChecked />
-            <Switch label={t.settings.interestsReceived} defaultChecked />
-            <Switch label={t.settings.interestAccepted} defaultChecked />
-            <Switch label={t.settings.newMessages} defaultChecked />
-            <Switch label={t.settings.profileViews} />
-            <Switch label={t.settings.weeklyDigest} defaultChecked />
-            </fieldset>
-          </Card>
+          {notifLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
+            </div>
+          ) : (
+            <div className="space-y-4">
 
-          <Card variant="flat" padding="lg" className="mt-6 space-y-2">
-            <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider mb-4">{t.settings.pushNotifications}</h3>
-            <fieldset disabled className="space-y-2 opacity-60">
-            <Switch label={t.nav.interests} defaultChecked />
-            <Switch label={t.nav.messages} defaultChecked />
-            <Switch label={t.settings.matchAlerts} defaultChecked />
-            </fieldset>
-          </Card>
+              {/* Always-on — informational only */}
+              <Card variant="flat" padding="lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                  <h3 className="text-sm font-semibold text-neutral-700">Always sent</h3>
+                </div>
+                <p className="text-xs text-neutral-500 mb-3">These transactional notifications cannot be turned off.</p>
+                <div className="space-y-2">
+                  {[
+                    { icon: <Sparkles className="h-3.5 w-3.5" />, label: "Welcome email & SMS", desc: "Sent once when you create your account" },
+                    { icon: <Crown className="h-3.5 w-3.5" />, label: "Premium activation", desc: "Email + SMS confirmation after payment" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-start gap-3 rounded-[var(--radius-md)] bg-neutral-50 px-3 py-2.5">
+                      <span className="mt-0.5 text-green-500">{item.icon}</span>
+                      <div>
+                        <p className="text-sm font-medium text-neutral-700">{item.label}</p>
+                        <p className="text-xs text-neutral-400">{item.desc}</p>
+                      </div>
+                      <span className="ml-auto text-[10px] font-semibold text-green-600 bg-green-50 rounded-full px-2 py-0.5 shrink-0">ON</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* Email Notifications */}
+              <Card variant="flat" padding="lg">
+                <div className="flex items-center gap-2 mb-4">
+                  <Mail className="h-4 w-4 text-primary-600 shrink-0" />
+                  <h3 className="text-sm font-semibold text-neutral-700">Email Notifications</h3>
+                </div>
+                <div className="space-y-4">
+                  <NotifRow
+                    label="New interest received"
+                    desc="When someone sends you an interest"
+                    checked={notifPrefs.email.interestsReceived}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, interestsReceived: v } }))}
+                  />
+                  <NotifRow
+                    label="Interest accepted"
+                    desc="When someone accepts your interest"
+                    checked={notifPrefs.email.interestAccepted}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, interestAccepted: v } }))}
+                  />
+                  <NotifRow
+                    label="New messages"
+                    desc="When you receive a chat message (max once per 30 min per conversation)"
+                    checked={notifPrefs.email.newMessages}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, newMessages: v } }))}
+                  />
+                  <NotifRow
+                    label="Profile views"
+                    desc="When someone views your profile (off by default — can be frequent)"
+                    checked={notifPrefs.email.profileViews}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, profileViews: v } }))}
+                    badge="Off by default"
+                  />
+                  <NotifRow
+                    label="New match suggestions"
+                    desc="When new compatible profiles join the platform"
+                    checked={notifPrefs.email.newMatches}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, newMatches: v } }))}
+                    badge="Coming soon"
+                    disabled
+                  />
+                  <NotifRow
+                    label="Weekly match digest"
+                    desc="A weekly summary of your top matches and activity"
+                    checked={notifPrefs.email.weeklyDigest}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, email: { ...p.email, weeklyDigest: v } }))}
+                    badge="Coming soon"
+                    disabled
+                  />
+                </div>
+              </Card>
+
+              {/* SMS Notifications */}
+              <Card variant="flat" padding="lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <Phone className="h-4 w-4 text-primary-600 shrink-0" />
+                  <h3 className="text-sm font-semibold text-neutral-700">SMS Notifications</h3>
+                </div>
+                <p className="text-xs text-neutral-400 mb-4">Sent to your registered mobile number via MSG91.</p>
+                <div className="space-y-4">
+                  <NotifRow
+                    label="Interest alerts"
+                    desc="SMS when you receive or someone accepts your interest"
+                    checked={notifPrefs.push.interests}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, push: { ...p.push, interests: v } }))}
+                  />
+                  <NotifRow
+                    label="Message alerts"
+                    desc="SMS for new chat messages (max once per 30 min per conversation)"
+                    checked={notifPrefs.push.messages}
+                    onChange={(v) => setNotifPrefs((p) => ({ ...p, push: { ...p.push, messages: v } }))}
+                  />
+                </div>
+              </Card>
+
+              {notifSaved && (
+                <p className="text-sm font-medium text-green-600 flex items-center gap-1.5">
+                  <CheckCircle className="h-4 w-4" /> Preferences saved!
+                </p>
+              )}
+              <Button
+                variant="primary"
+                size="md"
+                disabled={notifSaving}
+                onClick={async () => {
+                  setNotifSaving(true);
+                  try {
+                    await fetch("/api/profiles/notifications", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(notifPrefs),
+                    });
+                    setNotifSaved(true);
+                    setTimeout(() => setNotifSaved(false), 3000);
+                  } finally { setNotifSaving(false); }
+                }}
+              >
+                {notifSaving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : t.common.save}
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         {/* Subscription */}
@@ -770,6 +1011,132 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+        </TabsContent>
+        {/* Security */}
+        <TabsContent value="security">
+          <div className="space-y-4">
+            {/* Logout all devices */}
+            <Card variant="flat" padding="lg">
+              <div className="flex items-start gap-4">
+                <div className="h-10 w-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                  <MonitorSmartphone className="h-5 w-5 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-semibold text-neutral-900">Logout from all devices</h3>
+                  <p className="text-sm text-neutral-500 mt-0.5">
+                    Immediately invalidate all active sessions on every device. You will be logged out here too.
+                  </p>
+                  {logoutAllDone && (
+                    <p className="mt-2 text-sm font-medium text-green-600 flex items-center gap-1">
+                      <CheckCircle className="h-4 w-4" /> All sessions revoked. Signing you out…
+                    </p>
+                  )}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="mt-3"
+                    disabled={logoutAllLoading || logoutAllDone}
+                    onClick={async () => {
+                      if (!confirm("This will sign you out of all devices including this one. Continue?")) return;
+                      setLogoutAllLoading(true);
+                      try {
+                        await fetch("/api/security/sessions", { method: "DELETE" });
+                        setLogoutAllDone(true);
+                        setTimeout(() => signOut({ callbackUrl: "/login" }), 1500);
+                      } catch {
+                        setLogoutAllLoading(false);
+                      }
+                    }}
+                  >
+                    {logoutAllLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
+                    {logoutAllLoading ? "Revoking…" : "Logout all devices"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Login history */}
+            <Card variant="flat" padding="lg">
+              <h3 className="text-base font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-neutral-500" />
+                Recent login activity
+              </h3>
+
+              {sessionsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary-600" />
+                </div>
+              ) : sessions.length === 0 ? (
+                <p className="text-sm text-neutral-500 py-4 text-center">No login history available.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sessions.map((s, idx) => (
+                    <div
+                      key={s.id}
+                      className={`flex items-start justify-between rounded-[var(--radius-md)] border px-4 py-3 ${
+                        s.isNewDevice
+                          ? "border-amber-200 bg-amber-50"
+                          : idx === 0
+                          ? "border-green-200 bg-green-50"
+                          : "border-neutral-100 bg-neutral-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <MonitorSmartphone
+                          className={`h-4 w-4 mt-0.5 shrink-0 ${
+                            s.isNewDevice ? "text-amber-600" : "text-neutral-400"
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-neutral-800 truncate">
+                            {s.device}
+                            {idx === 0 && (
+                              <span className="ml-2 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold px-2 py-0.5 uppercase tracking-wide">
+                                Current
+                              </span>
+                            )}
+                            {s.isNewDevice && idx !== 0 && (
+                              <span className="ml-2 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5 uppercase tracking-wide">
+                                New device
+                              </span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-3 mt-0.5 text-xs text-neutral-500">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {s.ip}
+                            </span>
+                            <span className="capitalize">{s.loginMethod} login</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-neutral-400 shrink-0 ml-3 mt-0.5">
+                        {new Date(s.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Safety tips */}
+            <Card variant="flat" padding="lg" className="bg-blue-50 border-blue-100">
+              <h3 className="text-sm font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                <Shield className="h-4 w-4" /> Account security tips
+              </h3>
+              <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
+                <li>Use a strong, unique password for your account.</li>
+                <li>Never share your OTP or password with anyone.</li>
+                <li>If you see unrecognised logins, change your password immediately.</li>
+                <li>Do not share personal contact details through the chat.</li>
+              </ul>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
 

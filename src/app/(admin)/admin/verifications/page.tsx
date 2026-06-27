@@ -11,6 +11,7 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -75,31 +76,79 @@ function VerificationCard({
               <p className="font-semibold text-neutral-900">{request.userName}</p>
               <div className="flex items-center gap-2 mt-1">
                 <StatusIcon className={`h-4 w-4 ${config.color}`} />
-                <span className={`text-sm font-medium ${config.color}`}>
-                  {config.label}
-                </span>
+                <span className={`text-sm font-medium ${config.color}`}>{config.label}</span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-neutral-500">
                 <span className="flex items-center gap-1">
                   <FileText className="h-3.5 w-3.5" />
-                  {DOC_LABELS[request.documentType]}
+                  {DOC_LABELS[(request as any).documentType] || (request as any).documentType}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Camera className="h-3.5 w-3.5" />
-                  Selfie provided
-                </span>
+                {(request as any).selfieUrl && (
+                  <span className="flex items-center gap-1">
+                    <Camera className="h-3.5 w-3.5" /> Selfie provided
+                  </span>
+                )}
                 <span>
                   Submitted{" "}
-                  {new Date(request.submittedAt).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
+                  {request.submittedAt
+                    ? new Date(request.submittedAt).toLocaleDateString("en-IN", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })
+                    : "—"}
                 </span>
               </div>
               {request.rejectionReason && (
                 <div className="mt-2 rounded-[var(--radius-md)] bg-red-50 p-2 text-xs text-red-700">
                   Rejection reason: {request.rejectionReason}
+                </div>
+              )}
+
+              {/* Document viewer */}
+              {(request as any).documentUrl && (
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  {(request as any).documentUrl.endsWith(".pdf") ? (
+                    <a
+                      href={(request as any).documentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100 transition-colors"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-red-500" />
+                      View Document (PDF)
+                      <ExternalLink className="h-3 w-3 opacity-50" />
+                    </a>
+                  ) : (
+                    <a
+                      href={(request as any).documentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={(request as any).documentUrl}
+                        alt="Verification document"
+                        className="h-20 w-32 rounded-[var(--radius-md)] border border-neutral-200 object-cover hover:opacity-90 transition-opacity"
+                      />
+                      <span className="mt-1 block text-[10px] text-neutral-400 text-center">
+                        Click to enlarge
+                      </span>
+                    </a>
+                  )}
+                  {(request as any).selfieUrl && (
+                    <a
+                      href={(request as any).selfieUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img
+                        src={(request as any).selfieUrl}
+                        alt="Selfie"
+                        className="h-20 w-20 rounded-[var(--radius-md)] border border-neutral-200 object-cover hover:opacity-90 transition-opacity"
+                      />
+                      <span className="mt-1 block text-[10px] text-neutral-400 text-center">Selfie</span>
+                    </a>
+                  )}
                 </div>
               )}
             </div>
